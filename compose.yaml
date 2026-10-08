@@ -1,0 +1,5 @@
+name: forgequeue
+
+include:
+  - deployments/docker-compose.yml
+
