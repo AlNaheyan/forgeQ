@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: forgequeue
       POSTGRES_PASSWORD: forgequeue
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-55432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -31,4 +31,3 @@ services:
 volumes:
   postgres-data:
   redis-data:
-

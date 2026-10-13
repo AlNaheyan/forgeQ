@@ -70,7 +70,7 @@ func load(service string, lookup lookupFunc) (Config, error) {
 		return Config{}, err
 	}
 
-	databaseDefault := "postgres://forgequeue:forgequeue@localhost:5432/forgequeue?sslmode=disable"
+	databaseDefault := "postgres://forgequeue:forgequeue@localhost:55432/forgequeue?sslmode=disable"
 	redisDefault := "localhost:6379"
 	if cfg.Env == Production {
 		databaseDefault = ""
