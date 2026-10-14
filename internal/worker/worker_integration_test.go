@@ -5,19 +5,25 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"strconv"
 	"testing"
 	"time"
 
+	"forgequeue/internal/coordinator"
 	"forgequeue/internal/jobs"
 	"forgequeue/internal/platform"
 	"forgequeue/internal/queue"
 	postgresrepository "forgequeue/internal/repository/postgres"
 	"forgequeue/internal/worker"
 	"forgequeue/migrations"
+	"forgequeue/proto/workerpb"
 
 	"github.com/redis/go-redis/v9"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/test/bufconn"
 )
 
 func TestSubmitToWorkerSuccessPipeline(t *testing.T) {
@@ -57,18 +63,63 @@ func TestSubmitToWorkerSuccessPipeline(t *testing.T) {
 	repository := postgresrepository.NewJobRepository(db)
 	service := jobs.NewService(repository, jobQueue, 3)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	process, err := worker.New(worker.Config{
+	registry, err := coordinator.NewRegistry(coordinator.HealthThresholds{
+		SuspectAfter:   50 * time.Millisecond,
+		UnhealthyAfter: 100 * time.Millisecond,
+	}, nil)
+	if err != nil {
+		t.Fatalf("initialize registry: %v", err)
+	}
+	coordinatorService, err := coordinator.NewGRPCServer(coordinator.ServerConfig{
+		HeartbeatInterval: 10 * time.Millisecond,
+		LeaseDuration:     30 * time.Second,
+	}, registry, repository, jobQueue)
+	if err != nil {
+		t.Fatalf("initialize coordinator: %v", err)
+	}
+	listener := bufconn.Listen(1 << 20)
+	grpcServer := grpc.NewServer()
+	workerpb.RegisterWorkerCoordinatorServer(grpcServer, coordinatorService)
+	go func() { _ = grpcServer.Serve(listener) }()
+	defer grpcServer.Stop()
+	connection, err := grpc.NewClient("passthrough:///bufnet",
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) { return listener.Dial() }),
+	)
+	if err != nil {
+		t.Fatalf("connect to coordinator: %v", err)
+	}
+	defer connection.Close()
+	coordinatorClient := workerpb.NewWorkerCoordinatorClient(connection)
+	broker, err := worker.NewGRPCBroker(coordinatorClient)
+	if err != nil {
+		t.Fatalf("initialize broker: %v", err)
+	}
+	process, err := worker.NewWithBroker(worker.Config{
 		ID:           "worker-integration",
 		Concurrency:  2,
 		PollInterval: 5 * time.Millisecond,
 		JobTypes:     []string{"sleep", "fail"},
-	}, repository, jobQueue, worker.BuiltInHandlers(), logger)
+	}, broker, worker.BuiltInHandlers(), logger)
 	if err != nil {
 		t.Fatalf("initialize worker: %v", err)
 	}
+	remote, err := worker.NewRemoteCoordinator(worker.RemoteConfig{
+		WorkerID:          process.ID(),
+		MaxConcurrency:    2,
+		SupportedJobTypes: []string{"sleep", "fail"},
+	}, worker.NewGRPCCoordinatorRPC(coordinatorClient), process.ActiveJobs, logger)
+	if err != nil {
+		t.Fatalf("initialize remote coordinator: %v", err)
+	}
+	settings, err := remote.Register(ctx)
+	if err != nil {
+		t.Fatalf("register worker: %v", err)
+	}
 
 	workerCtx, cancelWorker := context.WithCancel(ctx)
-	workerDone := make(chan error, 1)
+	workerDone := make(chan error, 2)
+	go func() { workerDone <- remote.RunHeartbeat(workerCtx, settings.HeartbeatInterval) }()
 	go func() { workerDone <- process.Run(workerCtx) }()
 
 	submission, err := service.Submit(ctx, jobs.CreateInput{
@@ -104,6 +155,13 @@ func TestSubmitToWorkerSuccessPipeline(t *testing.T) {
 
 	cancelWorker()
 	if err := <-workerDone; err != nil {
+		t.Fatalf("worker component stopped with error: %v", err)
+	}
+	if err := <-workerDone; err != nil {
 		t.Fatalf("worker stopped with error: %v", err)
+	}
+	workers := registry.List()
+	if len(workers) != 1 || workers[0].WorkerID != "worker-integration" {
+		t.Fatalf("worker registry = %+v", workers)
 	}
 }

@@ -8,12 +8,12 @@ import (
 	"syscall"
 
 	"forgequeue/internal/config"
-	"forgequeue/internal/platform"
-	"forgequeue/internal/queue"
-	postgresrepository "forgequeue/internal/repository/postgres"
 	"forgequeue/internal/telemetry"
 	workerpkg "forgequeue/internal/worker"
-	"forgequeue/migrations"
+	"forgequeue/proto/workerpb"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
@@ -35,30 +35,49 @@ func run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	db, err := platform.OpenPostgres(ctx, cfg.DatabaseURL)
+	connection, err := grpc.NewClient(cfg.CoordinatorAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		return err
+		return fmt.Errorf("create coordinator client: %w", err)
 	}
-	defer db.Close()
-	redisClient, err := platform.OpenRedis(ctx, cfg.RedisAddr)
+	defer connection.Close()
+	client := workerpb.NewWorkerCoordinatorClient(connection)
+	broker, err := workerpkg.NewGRPCBroker(client)
 	if err != nil {
-		return err
-	}
-	defer redisClient.Close()
-	if err := migrations.Up(ctx, db); err != nil {
-		return fmt.Errorf("apply migrations: %w", err)
+		return fmt.Errorf("initialize coordinator broker: %w", err)
 	}
 
-	repository := postgresrepository.NewJobRepository(db)
-	jobQueue := queue.NewRedisQueue(redisClient, "forgequeue")
-	process, err := workerpkg.New(workerpkg.Config{
+	process, err := workerpkg.NewWithBroker(workerpkg.Config{
 		ID:           cfg.WorkerID,
 		Concurrency:  cfg.WorkerConcurrency,
 		PollInterval: cfg.WorkerPollInterval,
 		JobTypes:     cfg.WorkerJobTypes,
-	}, repository, jobQueue, workerpkg.BuiltInHandlers(), logger)
+	}, broker, workerpkg.BuiltInHandlers(), logger)
 	if err != nil {
 		return fmt.Errorf("initialize worker: %w", err)
 	}
-	return process.Run(ctx)
+	remote, err := workerpkg.NewRemoteCoordinator(workerpkg.RemoteConfig{
+		WorkerID:          process.ID(),
+		MaxConcurrency:    cfg.WorkerConcurrency,
+		SupportedJobTypes: cfg.WorkerJobTypes,
+	}, workerpkg.NewGRPCCoordinatorRPC(client), process.ActiveJobs, logger)
+	if err != nil {
+		return fmt.Errorf("initialize worker registration: %w", err)
+	}
+	settings, err := remote.Register(ctx)
+	if err != nil {
+		return err
+	}
+
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	errorsChannel := make(chan error, 2)
+	go func() { errorsChannel <- remote.RunHeartbeat(runCtx, settings.HeartbeatInterval) }()
+	go func() { errorsChannel <- process.Run(runCtx) }()
+	firstErr := <-errorsChannel
+	cancel()
+	secondErr := <-errorsChannel
+	if firstErr != nil {
+		return firstErr
+	}
+	return secondErr
 }

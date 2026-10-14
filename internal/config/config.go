@@ -24,8 +24,9 @@ type Config struct {
 	HTTPPort int
 	GRPCPort int
 
-	DatabaseURL string
-	RedisAddr   string
+	DatabaseURL     string
+	RedisAddr       string
+	CoordinatorAddr string
 
 	HeartbeatInterval      time.Duration
 	WorkerTimeout          time.Duration
@@ -84,6 +85,9 @@ func load(service string, lookup lookupFunc) (Config, error) {
 		return Config{}, err
 	}
 	if cfg.RedisAddr, err = stringValue(lookup, "REDIS_ADDR", redisDefault); err != nil {
+		return Config{}, err
+	}
+	if cfg.CoordinatorAddr, err = stringValue(lookup, "COORDINATOR_ADDR", "localhost:9090"); err != nil {
 		return Config{}, err
 	}
 	if cfg.Env == Production && cfg.DatabaseURL == "" {

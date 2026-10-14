@@ -27,6 +27,9 @@ func TestLoadUsesDevelopmentDefaults(t *testing.T) {
 	if cfg.DatabaseURL == "" || cfg.RedisAddr == "" {
 		t.Fatal("development dependency defaults must not be empty")
 	}
+	if cfg.CoordinatorAddr != "localhost:9090" {
+		t.Fatalf("unexpected coordinator address: %q", cfg.CoordinatorAddr)
+	}
 }
 
 func TestLoadReadsOverrides(t *testing.T) {

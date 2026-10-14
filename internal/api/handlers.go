@@ -16,9 +16,15 @@ import (
 const maxRequestBody = 1 << 20
 
 type Server struct {
-	jobs   *jobs.Service
-	ready  func(*http.Request) error
-	logger *slog.Logger
+	jobs    *jobs.Service
+	ready   func(*http.Request) error
+	logger  *slog.Logger
+	workers WorkerProvider
+}
+
+func (s *Server) WithWorkerProvider(provider WorkerProvider) *Server {
+	s.workers = provider
+	return s
 }
 
 func NewServer(service *jobs.Service, ready func(*http.Request) error, logger *slog.Logger) *Server {
@@ -31,6 +37,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /v1/jobs", s.listJobs)
 	mux.HandleFunc("GET /v1/jobs/{id}", s.getJob)
 	mux.HandleFunc("POST /v1/jobs/{id}/cancel", s.cancelJob)
+	mux.HandleFunc("GET /v1/workers", s.listWorkers)
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("GET /readyz", s.readiness)
 	return s.recoverPanics(mux)

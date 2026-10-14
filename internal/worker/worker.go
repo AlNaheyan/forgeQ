@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"forgequeue/internal/jobs"
@@ -37,13 +38,28 @@ type Config struct {
 
 type Worker struct {
 	config     Config
-	repository jobRepository
-	queue      workQueue
+	broker     Broker
 	handlers   map[string]Handler
 	logger     *slog.Logger
+	activeJobs atomic.Int64
+}
+
+func (w *Worker) ID() string {
+	return w.config.ID
+}
+
+func (w *Worker) ActiveJobs() int {
+	return int(w.activeJobs.Load())
 }
 
 func New(config Config, repository jobRepository, workQueue workQueue, handlers map[string]Handler, logger *slog.Logger) (*Worker, error) {
+	if repository == nil || workQueue == nil {
+		return nil, errors.New("worker repository and queue are required")
+	}
+	return NewWithBroker(config, NewLocalBroker(repository, workQueue), handlers, logger)
+}
+
+func NewWithBroker(config Config, broker Broker, handlers map[string]Handler, logger *slog.Logger) (*Worker, error) {
 	if config.Concurrency < 1 {
 		return nil, errors.New("worker concurrency must be greater than zero")
 	}
@@ -57,6 +73,9 @@ func New(config Config, repository jobRepository, workQueue workQueue, handlers 
 		}
 		config.ID = id
 	}
+	if broker == nil {
+		return nil, errors.New("worker broker is required")
+	}
 	selectedHandlers := make(map[string]Handler, len(config.JobTypes))
 	for _, jobType := range config.JobTypes {
 		handler, ok := handlers[jobType]
@@ -66,11 +85,10 @@ func New(config Config, repository jobRepository, workQueue workQueue, handlers 
 		selectedHandlers[jobType] = handler
 	}
 	return &Worker{
-		config:     config,
-		repository: repository,
-		queue:      workQueue,
-		handlers:   selectedHandlers,
-		logger:     logger.With("worker_id", config.ID),
+		config:   config,
+		broker:   broker,
+		handlers: selectedHandlers,
+		logger:   logger.With("worker_id", config.ID),
 	}, nil
 }
 
@@ -88,7 +106,7 @@ func (w *Worker) Run(ctx context.Context) error {
 		case semaphore <- struct{}{}:
 		}
 
-		jobID, err := w.queue.Dequeue(ctx)
+		claimed, err := w.broker.ClaimJob(ctx, w.config.ID, w.config.JobTypes)
 		if errors.Is(err, queue.ErrEmpty) {
 			<-semaphore
 			if !waitForNextPoll(ctx, w.config.PollInterval) {
@@ -100,7 +118,7 @@ func (w *Worker) Run(ctx context.Context) error {
 		}
 		if err != nil {
 			<-semaphore
-			w.logger.Warn("job dequeue failed", "error", err)
+			w.logger.Warn("job claim failed", "error", err)
 			if !waitForNextPoll(ctx, w.config.PollInterval) {
 				active.Wait()
 				w.logger.Info("worker stopped")
@@ -109,39 +127,21 @@ func (w *Worker) Run(ctx context.Context) error {
 			continue
 		}
 
-		candidate, err := w.repository.GetJob(ctx, jobID)
-		if err != nil {
-			<-semaphore
-			if !errors.Is(err, jobs.ErrNotFound) && !errors.Is(err, context.Canceled) {
-				w.logger.Warn("queued job lookup failed", "job_id", jobID, "error", err)
-			}
-			continue
-		}
-		handler, supported := w.handlers[candidate.Type]
+		handler, supported := w.handlers[claimed.Type]
 		if !supported {
 			<-semaphore
-			if err := w.queue.Enqueue(ctx, candidate.ID, candidate.Priority, candidate.CreatedAt); err != nil {
-				w.logger.Warn("unsupported job could not be returned to queue", "job_id", jobID, "job_type", candidate.Type, "error", err)
-			}
-			if !waitForNextPoll(ctx, w.config.PollInterval) {
-				active.Wait()
-				return nil
-			}
-			continue
-		}
-
-		claimed, err := w.repository.ClaimJob(ctx, jobID)
-		if err != nil {
-			<-semaphore
-			if !errors.Is(err, jobs.ErrClaimConflict) && !errors.Is(err, context.Canceled) {
-				w.logger.Warn("job claim failed", "job_id", jobID, "error", err)
-			}
+			w.logger.Error("coordinator returned unsupported job", "job_id", claimed.ID, "job_type", claimed.Type)
+			finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			_ = w.broker.FailJob(finishCtx, w.config.ID, claimed.ID, "worker has no handler for job type")
+			cancel()
 			continue
 		}
 
 		active.Add(1)
+		w.activeJobs.Add(1)
 		go func() {
 			defer active.Done()
+			defer w.activeJobs.Add(-1)
 			defer func() { <-semaphore }()
 			w.execute(ctx, claimed, handler)
 		}()
@@ -172,12 +172,18 @@ func (w *Worker) execute(ctx context.Context, job jobs.Job, handler Handler) {
 
 	finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	if _, err := w.repository.FinishJob(finishCtx, job.ID, status, encodedResult, lastError); err != nil {
+	var persistErr error
+	if status == jobs.StatusSucceeded {
+		persistErr = w.broker.CompleteJob(finishCtx, w.config.ID, job.ID, encodedResult)
+	} else {
+		persistErr = w.broker.FailJob(finishCtx, w.config.ID, job.ID, lastError)
+	}
+	if persistErr != nil {
 		w.logger.Error("job result persistence failed",
 			"job_id", job.ID,
 			"attempt", job.AttemptCount,
 			"status", status,
-			"error", err,
+			"error", persistErr,
 		)
 		return
 	}

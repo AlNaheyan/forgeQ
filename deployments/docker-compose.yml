@@ -39,6 +39,7 @@ services:
       HTTP_PORT: 8080
       DATABASE_URL: postgres://forgequeue:forgequeue@postgres:5432/forgequeue?sslmode=disable
       REDIS_ADDR: redis:6379
+      COORDINATOR_ADDR: coordinator:9090
       LOG_LEVEL: info
     ports:
       - "8080:8080"
@@ -54,6 +55,28 @@ services:
       retries: 10
     restart: unless-stopped
 
+  coordinator:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        SERVICE: coordinator
+    environment:
+      APP_ENV: development
+      GRPC_PORT: 9090
+      DATABASE_URL: postgres://forgequeue:forgequeue@postgres:5432/forgequeue?sslmode=disable
+      REDIS_ADDR: redis:6379
+      HEARTBEAT_INTERVAL: 5s
+      WORKER_TIMEOUT: 15s
+      LEASE_DURATION: 30s
+      LOG_LEVEL: info
+    ports:
+      - "9090:9090"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
   worker:
     build:
       context: ..
@@ -62,15 +85,14 @@ services:
         SERVICE: worker
     environment:
       APP_ENV: development
-      DATABASE_URL: postgres://forgequeue:forgequeue@postgres:5432/forgequeue?sslmode=disable
-      REDIS_ADDR: redis:6379
+      COORDINATOR_ADDR: coordinator:9090
       WORKER_ID: worker-1
       WORKER_CONCURRENCY: 4
       WORKER_JOB_TYPES: sleep,fail
       LOG_LEVEL: info
     depends_on:
-      api:
-        condition: service_healthy
+      coordinator:
+        condition: service_started
     restart: unless-stopped
 
 volumes:

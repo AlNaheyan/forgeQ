@@ -1,0 +1,154 @@
+syntax = "proto3";
+
+package forgequeue.worker.v1;
+
+option go_package = "forgequeue/proto/workerpb;workerpb";
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+// WorkerCoordinator is the internal control-plane API used by workers and the
+// administrative worker listing endpoint.
+service WorkerCoordinator {
+  rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  rpc ClaimJob(ClaimJobRequest) returns (ClaimJobResponse);
+  rpc StartJob(StartJobRequest) returns (StartJobResponse);
+  rpc CompleteJob(CompleteJobRequest) returns (CompleteJobResponse);
+  rpc FailJob(FailJobRequest) returns (FailJobResponse);
+  rpc RenewLease(RenewLeaseRequest) returns (RenewLeaseResponse);
+  rpc ListWorkers(ListWorkersRequest) returns (ListWorkersResponse);
+}
+
+enum JobStatus {
+  JOB_STATUS_UNSPECIFIED = 0;
+  JOB_STATUS_QUEUED = 1;
+  JOB_STATUS_LEASED = 2;
+  JOB_STATUS_RUNNING = 3;
+  JOB_STATUS_RETRY_WAIT = 4;
+  JOB_STATUS_SUCCEEDED = 5;
+  JOB_STATUS_FAILED = 6;
+  JOB_STATUS_DEAD_LETTER = 7;
+  JOB_STATUS_CANCELED = 8;
+}
+
+enum WorkerHealth {
+  WORKER_HEALTH_UNSPECIFIED = 0;
+  WORKER_HEALTH_HEALTHY = 1;
+  WORKER_HEALTH_SUSPECT = 2;
+  WORKER_HEALTH_UNHEALTHY = 3;
+}
+
+message Job {
+  string id = 1;
+  string type = 2;
+  bytes payload_json = 3;
+  JobStatus status = 4;
+  int32 attempt_count = 5;
+  int32 max_attempts = 6;
+  int32 priority = 7;
+  google.protobuf.Timestamp scheduled_at = 8;
+  string lease_owner = 9;
+  google.protobuf.Timestamp lease_expires_at = 10;
+  string idempotency_key = 11;
+  bytes result_json = 12;
+  string last_error = 13;
+  google.protobuf.Timestamp created_at = 14;
+  google.protobuf.Timestamp updated_at = 15;
+}
+
+message Worker {
+  string worker_id = 1;
+  WorkerHealth health = 2;
+  int32 active_jobs = 3;
+  int32 max_concurrency = 4;
+  repeated string supported_job_types = 5;
+  google.protobuf.Timestamp registered_at = 6;
+  google.protobuf.Timestamp last_heartbeat_at = 7;
+}
+
+message RegisterWorkerRequest {
+  string worker_id = 1;
+  int32 max_concurrency = 2;
+  repeated string supported_job_types = 3;
+}
+
+message RegisterWorkerResponse {
+  google.protobuf.Duration heartbeat_interval = 1;
+  google.protobuf.Duration lease_duration = 2;
+  google.protobuf.Timestamp registered_at = 3;
+}
+
+message HeartbeatRequest {
+  string worker_id = 1;
+  int32 active_jobs = 2;
+  int32 max_concurrency = 3;
+  google.protobuf.Timestamp timestamp = 4;
+}
+
+message HeartbeatResponse {
+  bool accepted = 1;
+  WorkerHealth health = 2;
+  google.protobuf.Timestamp server_time = 3;
+}
+
+message ClaimJobRequest {
+  string worker_id = 1;
+  repeated string supported_job_types = 2;
+}
+
+message ClaimJobResponse {
+  // job is absent when there is no eligible work for this worker.
+  Job job = 1;
+  google.protobuf.Duration lease_duration = 2;
+}
+
+message StartJobRequest {
+  string worker_id = 1;
+  string job_id = 2;
+}
+
+message StartJobResponse {
+  Job job = 1;
+}
+
+message CompleteJobRequest {
+  string worker_id = 1;
+  string job_id = 2;
+  bytes result_json = 3;
+}
+
+message CompleteJobResponse {
+  Job job = 1;
+}
+
+message FailJobRequest {
+  string worker_id = 1;
+  string job_id = 2;
+  string error = 3;
+  // retryable allows the coordinator to distinguish permanent failures once
+  // retry and dead-letter behavior is introduced.
+  bool retryable = 4;
+}
+
+message FailJobResponse {
+  Job job = 1;
+}
+
+message RenewLeaseRequest {
+  string worker_id = 1;
+  string job_id = 2;
+}
+
+message RenewLeaseResponse {
+  google.protobuf.Timestamp lease_expires_at = 1;
+}
+
+message ListWorkersRequest {
+  // health is optional in effect: UNSPECIFIED lists workers of every state.
+  WorkerHealth health = 1;
+}
+
+message ListWorkersResponse {
+  repeated Worker workers = 1;
+}

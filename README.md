@@ -5,19 +5,22 @@ Go. It is being built to make coordination, failure recovery, at-least-once
 delivery, idempotency, backpressure, and observability explicit rather than
 hiding them behind a workflow framework.
 
-The first milestone (Waves 0 through 3) is complete: ForgeQueue has a durable
-job API, Redis-backed ready/delayed queues, automatic reconciliation from
-PostgreSQL, and bounded-concurrency workers with built-in `sleep` and `fail`
-handlers.
+Waves 0 through 4 are complete: ForgeQueue has a durable job API, Redis-backed
+queues, PostgreSQL reconciliation, bounded-concurrency workers, and an explicit
+gRPC coordinator that owns worker registration, heartbeats, health, and job
+claims.
 
 ## Planned architecture
 
 ```text
-Client --HTTP--> API --+--> PostgreSQL (durable truth)
-                       |
-                       +--> Redis (queue hints and coordination)
-                                  |
-Worker --gRPC--> Coordinator -----+
+Client --HTTP--> API ----------> PostgreSQL (durable truth)
+                  |                     ^
+                  |                     |
+                  +--gRPC--> Coordinator +--> Redis (queue hints)
+                                ^
+                                |
+                         gRPC   |
+                              Worker
 ```
 
 ForgeQueue will provide at-least-once execution. A job may run more than once
@@ -69,10 +72,11 @@ curl -X POST http://localhost:8080/v1/jobs \
 curl http://localhost:8080/v1/jobs?status=queued
 ```
 
-The worker claims queued jobs atomically in PostgreSQL. A successful `sleep`
-job moves from `queued` to `running` to `succeeded`; its result records the
-actual requested sleep duration. Wave 5 will replace this direct claim with
-lease-based ownership and crash recovery.
+The worker registers with the coordinator, reports load through heartbeats, and
+requests work through gRPC. The coordinator atomically claims queued jobs in
+PostgreSQL. A successful `sleep` job moves from `queued` to `running` to
+`succeeded`; Wave 5 will replace the coordinator's in-memory assignment record
+with durable leases and crash recovery.
 
 Available Wave 1 endpoints:
 
@@ -80,6 +84,7 @@ Available Wave 1 endpoints:
 - `GET /v1/jobs/{id}`
 - `GET /v1/jobs?status=&type=&limit=&cursor=`
 - `POST /v1/jobs/{id}/cancel`
+- `GET /v1/workers`
 - `GET /healthz`
 - `GET /readyz`
 
@@ -115,6 +120,8 @@ docker compose down
 - `internal/repository/postgres/`: durable job storage
 - `internal/queue/`: Redis queue and PostgreSQL-to-Redis reconciliation
 - `internal/worker/`: worker runtime, concurrency control, and built-in handlers
+- `internal/coordinator/`: worker registry, health state, and gRPC control plane
+- `proto/`: coordinator protocol and generated Go stubs
 - `internal/api/`: HTTP transport
 - `internal/telemetry/`: shared structured logging and, later, metrics
 - `migrations/`: embedded, ordered PostgreSQL migrations

@@ -17,6 +17,10 @@ import (
 	postgresrepository "forgequeue/internal/repository/postgres"
 	"forgequeue/internal/telemetry"
 	"forgequeue/migrations"
+	"forgequeue/proto/workerpb"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
@@ -48,6 +52,11 @@ func run() error {
 		return err
 	}
 	defer redisClient.Close()
+	coordinatorConnection, err := grpc.NewClient(cfg.CoordinatorAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return fmt.Errorf("create coordinator client: %w", err)
+	}
+	defer coordinatorConnection.Close()
 	if err := migrations.Up(ctx, db); err != nil {
 		return fmt.Errorf("apply migrations: %w", err)
 	}
@@ -64,7 +73,9 @@ func run() error {
 			return err
 		}
 		return redisClient.Ping(readyCtx).Err()
-	}, logger).Routes()
+	}, logger).
+		WithWorkerProvider(api.NewGRPCWorkerProvider(workerpb.NewWorkerCoordinatorClient(coordinatorConnection))).
+		Routes()
 
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.HTTPPort),
