@@ -33,6 +33,9 @@ type Config struct {
 	LeaseDuration          time.Duration
 	LeaseRenewInterval     time.Duration
 	LeaseScanInterval      time.Duration
+	RetryBaseDelay         time.Duration
+	RetryMaxDelay          time.Duration
+	RetryPromotionInterval time.Duration
 	QueueReconcileInterval time.Duration
 
 	DefaultMaxAttempts int
@@ -113,6 +116,15 @@ func load(service string, lookup lookupFunc) (Config, error) {
 	if cfg.LeaseScanInterval, err = durationValue(lookup, "LEASE_SCAN_INTERVAL", time.Second); err != nil {
 		return Config{}, err
 	}
+	if cfg.RetryBaseDelay, err = durationValue(lookup, "RETRY_BASE_DELAY", 2*time.Second); err != nil {
+		return Config{}, err
+	}
+	if cfg.RetryMaxDelay, err = durationValue(lookup, "RETRY_MAX_DELAY", 60*time.Second); err != nil {
+		return Config{}, err
+	}
+	if cfg.RetryPromotionInterval, err = durationValue(lookup, "RETRY_PROMOTION_INTERVAL", 250*time.Millisecond); err != nil {
+		return Config{}, err
+	}
 	if cfg.QueueReconcileInterval, err = durationValue(lookup, "QUEUE_RECONCILE_INTERVAL", 10*time.Second); err != nil {
 		return Config{}, err
 	}
@@ -150,6 +162,9 @@ func load(service string, lookup lookupFunc) (Config, error) {
 	}
 	if cfg.LeaseRenewInterval >= cfg.LeaseDuration {
 		return Config{}, errors.New("LEASE_RENEW_INTERVAL must be less than LEASE_DURATION")
+	}
+	if cfg.RetryBaseDelay > cfg.RetryMaxDelay {
+		return Config{}, errors.New("RETRY_BASE_DELAY must not exceed RETRY_MAX_DELAY")
 	}
 
 	return cfg, nil

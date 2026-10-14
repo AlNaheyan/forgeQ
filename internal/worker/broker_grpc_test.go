@@ -14,6 +14,15 @@ import (
 type renewalCoordinatorClient struct {
 	workerpb.WorkerCoordinatorClient
 	renew func(*workerpb.RenewLeaseRequest) (*workerpb.RenewLeaseResponse, error)
+	fail  func(*workerpb.FailJobRequest) (*workerpb.FailJobResponse, error)
+}
+
+func (c *renewalCoordinatorClient) FailJob(
+	_ context.Context,
+	request *workerpb.FailJobRequest,
+	_ ...grpc.CallOption,
+) (*workerpb.FailJobResponse, error) {
+	return c.fail(request)
 }
 
 func (c *renewalCoordinatorClient) RenewLease(
@@ -57,5 +66,21 @@ func TestGRPCBrokerRejectsMissingLeaseExpiry(t *testing.T) {
 	}
 	if _, err := broker.RenewLease(context.Background(), "worker-1", "job-1"); err == nil {
 		t.Fatal("RenewLease error = nil, want missing expiry error")
+	}
+}
+
+func TestGRPCBrokerPassesFailureClassification(t *testing.T) {
+	client := &renewalCoordinatorClient{fail: func(request *workerpb.FailJobRequest) (*workerpb.FailJobResponse, error) {
+		if request.GetWorkerId() != "worker-1" || request.GetJobId() != "job-1" || request.GetError() != "boom" || request.GetRetryable() {
+			t.Fatalf("fail request = %+v", request)
+		}
+		return &workerpb.FailJobResponse{}, nil
+	}}
+	broker, err := NewGRPCBroker(client)
+	if err != nil {
+		t.Fatalf("NewGRPCBroker: %v", err)
+	}
+	if err := broker.FailJob(context.Background(), "worker-1", "job-1", "boom", false); err != nil {
+		t.Fatalf("FailJob: %v", err)
 	}
 }

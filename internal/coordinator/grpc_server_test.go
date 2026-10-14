@@ -46,7 +46,7 @@ func (r *serverTestRepository) LeaseJob(_ context.Context, id, workerID string, 
 	return job, nil
 }
 
-func (r *serverTestRepository) StartLeasedJob(_ context.Context, id, workerID string) (jobs.Job, error) {
+func (r *serverTestRepository) StartAttempt(_ context.Context, id, workerID string) (jobs.Job, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	job, ok := r.jobs[id]
@@ -72,7 +72,7 @@ func (r *serverTestRepository) RenewLease(_ context.Context, id, workerID string
 	return job, nil
 }
 
-func (r *serverTestRepository) FinishLeasedJob(_ context.Context, id, workerID string, target jobs.Status, result []byte, lastError string) (jobs.Job, error) {
+func (r *serverTestRepository) SucceedAttempt(_ context.Context, id, workerID string, result []byte) (jobs.Job, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	job, ok := r.jobs[id]
@@ -82,18 +82,42 @@ func (r *serverTestRepository) FinishLeasedJob(_ context.Context, id, workerID s
 	if job.Status != jobs.StatusRunning || job.LeaseOwner != workerID || job.LeaseExpiresAt == nil || !job.LeaseExpiresAt.After(time.Now()) {
 		return jobs.Job{}, jobs.ErrInvalidTransition
 	}
-	job.Status = target
+	job.Status = jobs.StatusSucceeded
 	job.LeaseOwner = ""
 	job.LeaseExpiresAt = nil
 	job.Result = append(json.RawMessage(nil), result...)
+	job.LastError = ""
+	r.jobs[id] = job
+	return job, nil
+}
+
+func (r *serverTestRepository) FailAttempt(_ context.Context, id, workerID, lastError string, retryable bool, retryAt time.Time) (jobs.Job, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	job, ok := r.jobs[id]
+	if !ok {
+		return jobs.Job{}, jobs.ErrNotFound
+	}
+	if job.Status != jobs.StatusRunning || job.LeaseOwner != workerID || job.LeaseExpiresAt == nil || !job.LeaseExpiresAt.After(time.Now()) {
+		return jobs.Job{}, jobs.ErrInvalidTransition
+	}
+	if retryable && job.AttemptCount < job.MaxAttempts {
+		job.Status = jobs.StatusRetryWait
+		job.ScheduledAt = retryAt
+	} else {
+		job.Status = jobs.StatusDeadLetter
+	}
+	job.LeaseOwner = ""
+	job.LeaseExpiresAt = nil
 	job.LastError = lastError
 	r.jobs[id] = job
 	return job, nil
 }
 
 type serverTestQueue struct {
-	mu  sync.Mutex
-	ids []string
+	mu      sync.Mutex
+	ids     []string
+	delayed map[string]time.Time
 }
 
 func (q *serverTestQueue) Dequeue(context.Context) (string, error) {
@@ -111,6 +135,16 @@ func (q *serverTestQueue) Enqueue(_ context.Context, id string, _ int, _ time.Ti
 	q.mu.Lock()
 	q.ids = append(q.ids, id)
 	q.mu.Unlock()
+	return nil
+}
+
+func (q *serverTestQueue) ScheduleRetry(_ context.Context, id string, dueAt time.Time) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.delayed == nil {
+		q.delayed = make(map[string]time.Time)
+	}
+	q.delayed[id] = dueAt
 	return nil
 }
 
@@ -173,5 +207,54 @@ func TestGRPCServerWorkerAndJobLifecycle(t *testing.T) {
 	listed, err := server.ListWorkers(context.Background(), &workerpb.ListWorkersRequest{})
 	if err != nil || len(listed.GetWorkers()) != 1 || listed.GetWorkers()[0].GetHealth() != workerpb.WorkerHealth_WORKER_HEALTH_HEALTHY {
 		t.Fatalf("list workers: response=%v err=%v", listed, err)
+	}
+}
+
+func TestGRPCServerSchedulesRetryableFailure(t *testing.T) {
+	now := time.Now().UTC()
+	registry, err := NewRegistry(HealthThresholds{SuspectAfter: time.Minute, UnhealthyAfter: 2 * time.Minute}, nil)
+	if err != nil {
+		t.Fatalf("new registry: %v", err)
+	}
+	repository := &serverTestRepository{jobs: map[string]jobs.Job{
+		"job-retry": {
+			ID: "job-retry", Type: "fail", Payload: json.RawMessage(`{"failures_before_success":1}`),
+			Status: jobs.StatusQueued, MaxAttempts: 3, ScheduledAt: now, CreatedAt: now, UpdatedAt: now,
+		},
+	}}
+	jobQueue := &serverTestQueue{ids: []string{"job-retry"}}
+	server, err := NewGRPCServer(ServerConfig{
+		HeartbeatInterval: time.Second,
+		LeaseDuration:     time.Minute,
+		RetryPolicy:       NewRetryPolicy(2*time.Second, time.Minute, 0, nil),
+	}, registry, repository, jobQueue)
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+	if _, err := server.RegisterWorker(context.Background(), &workerpb.RegisterWorkerRequest{
+		WorkerId: "worker-1", MaxConcurrency: 1, SupportedJobTypes: []string{"fail"},
+	}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if _, err := server.ClaimJob(context.Background(), &workerpb.ClaimJobRequest{WorkerId: "worker-1"}); err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+	if _, err := server.StartJob(context.Background(), &workerpb.StartJobRequest{WorkerId: "worker-1", JobId: "job-retry"}); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	failed, err := server.FailJob(context.Background(), &workerpb.FailJobRequest{
+		WorkerId: "worker-1", JobId: "job-retry", Error: "intentional failure", Retryable: true,
+	})
+	if err != nil {
+		t.Fatalf("fail: %v", err)
+	}
+	if failed.GetJob().GetStatus() != workerpb.JobStatus_JOB_STATUS_RETRY_WAIT {
+		t.Fatalf("failed status = %s", failed.GetJob().GetStatus())
+	}
+	jobQueue.mu.Lock()
+	dueAt, scheduled := jobQueue.delayed["job-retry"]
+	jobQueue.mu.Unlock()
+	if !scheduled || dueAt.Before(now.Add(2*time.Second)) {
+		t.Fatalf("retry schedule = %v, scheduled=%t", dueAt, scheduled)
 	}
 }

@@ -68,12 +68,21 @@ func run() error {
 	coordinatorServer, err := coordinator.NewGRPCServer(coordinator.ServerConfig{
 		HeartbeatInterval: cfg.HeartbeatInterval,
 		LeaseDuration:     cfg.LeaseDuration,
+		RetryPolicy: coordinator.NewRetryPolicy(
+			cfg.RetryBaseDelay,
+			cfg.RetryMaxDelay,
+			coordinator.DefaultRetryJitterFraction,
+			nil,
+		),
+		Logger: logger,
 	}, registry, repository, jobQueue)
 	if err != nil {
 		return fmt.Errorf("initialize coordinator service: %w", err)
 	}
 	recoveryScanner := coordinator.NewRecoveryScanner(repository, jobQueue, logger, 100)
 	go recoveryScanner.Run(ctx, cfg.LeaseScanInterval)
+	retryPromoter := coordinator.NewRetryPromoter(repository, jobQueue, logger, 100)
+	go retryPromoter.Run(ctx, cfg.RetryPromotionInterval)
 
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.GRPCPort))
 	if err != nil {

@@ -64,12 +64,12 @@ func (b *GRPCBroker) RenewLease(ctx context.Context, workerID, jobID string) (ti
 	return requiredProtoTime(response.GetLeaseExpiresAt(), "lease_expires_at")
 }
 
-func (b *GRPCBroker) FailJob(ctx context.Context, workerID, jobID, failure string) error {
+func (b *GRPCBroker) FailJob(ctx context.Context, workerID, jobID, failure string, retryable bool) error {
 	_, err := b.client.FailJob(ctx, &workerpb.FailJobRequest{
 		WorkerId:  workerID,
 		JobId:     jobID,
 		Error:     failure,
-		Retryable: true,
+		Retryable: retryable,
 	})
 	return err
 }

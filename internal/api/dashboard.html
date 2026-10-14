@@ -96,8 +96,11 @@
     .job-id { color: var(--blue); background: none; border: 0; padding: 0; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
     .job-id:hover { text-decoration: underline; }
     .payload { max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; }
-    .cancel { background: transparent; color: var(--red); border: 1px solid #5d3038; border-radius: 5px; padding: 4px 7px; font-size: 10px; }
+    .job-action { background: transparent; border-radius: 5px; padding: 4px 7px; font-size: 10px; }
+    .cancel { color: var(--red); border: 1px solid #5d3038; }
     .cancel:hover { background: var(--red-dim); }
+    .retry { color: var(--green); border: 1px solid #2d634e; }
+    .retry:hover { background: var(--green-dim); }
     .table-empty { text-align: center; padding: 46px; color: var(--muted); }
     dialog { width: min(680px, calc(100% - 32px)); color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 0; box-shadow: 0 24px 80px rgba(0,0,0,.55); }
     dialog::backdrop { background: rgba(2,5,8,.78); backdrop-filter: blur(3px); }
@@ -142,7 +145,7 @@
 
     <section class="stats" aria-label="Recent job statistics">
       <article class="stat"><span class="stat-label">Recent jobs</span><strong id="stat-total" class="stat-value">—</strong><div class="stat-note">latest 100 records</div></article>
-      <article class="stat"><span class="stat-label">Queued</span><strong id="stat-queued" class="stat-value">—</strong><div class="stat-note">waiting for a lease</div></article>
+      <article class="stat"><span class="stat-label">Queued / backoff</span><strong id="stat-queued" class="stat-value">—</strong><div class="stat-note">ready + retry wait</div></article>
       <article class="stat"><span class="stat-label">In flight</span><strong id="stat-active" class="stat-value">—</strong><div class="stat-note">leased + running</div></article>
       <article class="stat"><span class="stat-label">Succeeded</span><strong id="stat-succeeded" class="stat-value">—</strong><div class="stat-note">terminal success</div></article>
       <article class="stat"><span class="stat-label">Failed</span><strong id="stat-failed" class="stat-value">—</strong><div class="stat-note">failed + dead letter</div></article>
@@ -331,10 +334,17 @@
         if (["queued", "retry_wait"].includes(job.status)) {
           const cancel = document.createElement("button");
           cancel.type = "button";
-          cancel.className = "cancel";
+          cancel.className = "job-action cancel";
           cancel.textContent = "Cancel";
           cancel.addEventListener("click", () => cancelJob(job.job_id, cancel));
           action.append(cancel);
+        } else if (job.status === "dead_letter") {
+          const retry = document.createElement("button");
+          retry.type = "button";
+          retry.className = "job-action retry";
+          retry.textContent = "Retry";
+          retry.addEventListener("click", () => retryJob(job.job_id, retry));
+          action.append(retry);
         }
         row.append(idCell, type, statusCell, attempt, owner, payload, updated, action);
         root.append(row);
@@ -368,6 +378,19 @@
       try {
         await fetchJSON(`/v1/jobs/${encodeURIComponent(jobID)}/cancel`, { method: "POST" });
         toast(`Canceled ${shortID(jobID)}`);
+        await refresh();
+      } catch (error) {
+        toast(error.message, true);
+        button.disabled = false;
+      }
+    }
+
+    async function retryJob(jobID, button) {
+      button.disabled = true;
+      try {
+        await fetchJSON(`/v1/jobs/${encodeURIComponent(jobID)}/retry`, { method: "POST" });
+        toast(`Requeued ${shortID(jobID)} with one additional attempt`);
+        state.filter = "all";
         await refresh();
       } catch (error) {
         toast(error.message, true);
@@ -409,7 +432,7 @@
       $("payload-value").max = fail ? "100" : "3600000";
       $("payload-value").value = fail ? "1" : "3000";
       $("payload-hint").textContent = fail
-        ? "Fails intentionally. Automatic retries arrive in Wave 6; currently this becomes failed."
+        ? "Fails intentionally until its attempt number exceeds this value, then succeeds."
         : "The worker waits for this duration, renewing its lease when needed.";
     }
 

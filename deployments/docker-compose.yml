@@ -70,6 +70,9 @@ services:
       WORKER_TIMEOUT: 15s
       LEASE_DURATION: 30s
       LEASE_SCAN_INTERVAL: 1s
+      RETRY_BASE_DELAY: 2s
+      RETRY_MAX_DELAY: 60s
+      RETRY_PROMOTION_INTERVAL: 250ms
       LOG_LEVEL: info
     ports:
       - "9090:9090"

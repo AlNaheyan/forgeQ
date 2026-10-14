@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"forgequeue/internal/jobs"
@@ -20,20 +21,24 @@ import (
 type jobRepository interface {
 	GetJob(context.Context, string) (jobs.Job, error)
 	LeaseJob(context.Context, string, string, time.Duration) (jobs.Job, error)
-	StartLeasedJob(context.Context, string, string) (jobs.Job, error)
+	StartAttempt(context.Context, string, string) (jobs.Job, error)
 	RenewLease(context.Context, string, string, time.Duration) (jobs.Job, error)
-	FinishLeasedJob(context.Context, string, string, jobs.Status, []byte, string) (jobs.Job, error)
+	SucceedAttempt(context.Context, string, string, []byte) (jobs.Job, error)
+	FailAttempt(context.Context, string, string, string, bool, time.Time) (jobs.Job, error)
 }
 
 type jobQueue interface {
 	Dequeue(context.Context) (string, error)
 	Enqueue(context.Context, string, int, time.Time) error
+	ScheduleRetry(context.Context, string, time.Time) error
 	Depth(context.Context) (int64, error)
 }
 
 type ServerConfig struct {
 	HeartbeatInterval time.Duration
 	LeaseDuration     time.Duration
+	RetryPolicy       RetryPolicy
+	Logger            *slog.Logger
 }
 
 // GRPCServer implements the worker control plane. PostgreSQL leases are the
@@ -46,6 +51,8 @@ type GRPCServer struct {
 	queue             jobQueue
 	heartbeatInterval time.Duration
 	leaseDuration     time.Duration
+	retryPolicy       RetryPolicy
+	logger            *slog.Logger
 }
 
 func NewGRPCServer(config ServerConfig, registry *Registry, repository jobRepository, queue jobQueue) (*GRPCServer, error) {
@@ -55,12 +62,17 @@ func NewGRPCServer(config ServerConfig, registry *Registry, repository jobReposi
 	if config.HeartbeatInterval <= 0 || config.LeaseDuration <= 0 {
 		return nil, errors.New("heartbeat interval and lease duration must be greater than zero")
 	}
+	if config.Logger == nil {
+		config.Logger = slog.Default()
+	}
 	return &GRPCServer{
 		registry:          registry,
 		repository:        repository,
 		queue:             queue,
 		heartbeatInterval: config.HeartbeatInterval,
 		leaseDuration:     config.LeaseDuration,
+		retryPolicy:       config.RetryPolicy,
+		logger:            config.Logger,
 	}, nil
 }
 
@@ -178,7 +190,7 @@ func (s *GRPCServer) StartJob(ctx context.Context, request *workerpb.StartJobReq
 	if request == nil || request.GetWorkerId() == "" || request.GetJobId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "worker_id and job_id are required")
 	}
-	job, err := s.repository.StartLeasedJob(ctx, request.GetJobId(), request.GetWorkerId())
+	job, err := s.repository.StartAttempt(ctx, request.GetJobId(), request.GetWorkerId())
 	if err != nil {
 		return nil, repositoryStatusError(err)
 	}
@@ -192,7 +204,7 @@ func (s *GRPCServer) CompleteJob(ctx context.Context, request *workerpb.Complete
 	if len(request.GetResultJson()) > 0 && !json.Valid(request.GetResultJson()) {
 		return nil, status.Error(codes.InvalidArgument, "result_json must contain valid JSON")
 	}
-	job, err := s.repository.FinishLeasedJob(ctx, request.GetJobId(), request.GetWorkerId(), jobs.StatusSucceeded, request.GetResultJson(), "")
+	job, err := s.repository.SucceedAttempt(ctx, request.GetJobId(), request.GetWorkerId(), request.GetResultJson())
 	if err != nil {
 		return nil, repositoryStatusError(err)
 	}
@@ -203,9 +215,26 @@ func (s *GRPCServer) FailJob(ctx context.Context, request *workerpb.FailJobReque
 	if request == nil || request.GetWorkerId() == "" || request.GetJobId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "worker_id and job_id are required")
 	}
-	job, err := s.repository.FinishLeasedJob(ctx, request.GetJobId(), request.GetWorkerId(), jobs.StatusFailed, nil, request.GetError())
+	current, err := s.repository.GetJob(ctx, request.GetJobId())
 	if err != nil {
 		return nil, repositoryStatusError(err)
+	}
+	var retryAt time.Time
+	if request.GetRetryable() {
+		retryAt = s.retryPolicy.DueAt(time.Now(), current.AttemptCount)
+	}
+	job, err := s.repository.FailAttempt(ctx, request.GetJobId(), request.GetWorkerId(), request.GetError(), request.GetRetryable(), retryAt)
+	if err != nil {
+		return nil, repositoryStatusError(err)
+	}
+	if job.Status == jobs.StatusRetryWait {
+		if err := s.queue.ScheduleRetry(ctx, job.ID, job.ScheduledAt); err != nil {
+			s.logger.Warn("retry persisted but delayed enqueue failed; promoter will recover from PostgreSQL",
+				"job_id", job.ID,
+				"retry_at", job.ScheduledAt,
+				"error", err,
+			)
+		}
 	}
 	return &workerpb.FailJobResponse{Job: jobToProto(job)}, nil
 }

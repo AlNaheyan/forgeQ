@@ -146,7 +146,7 @@ func (w *Worker) Run(ctx context.Context) error {
 			<-semaphore
 			w.logger.Error("coordinator returned unsupported job", "job_id", claimed.ID, "job_type", claimed.Type)
 			finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-			_ = w.broker.FailJob(finishCtx, w.config.ID, claimed.ID, "worker has no handler for job type")
+			_ = w.broker.FailJob(finishCtx, w.config.ID, claimed.ID, "worker has no handler for job type", false)
 			cancel()
 			continue
 		}
@@ -211,7 +211,7 @@ func (w *Worker) execute(ctx context.Context, job jobs.Job, handler Handler) {
 	if status == jobs.StatusSucceeded {
 		persistErr = w.broker.CompleteJob(finishCtx, w.config.ID, job.ID, encodedResult)
 	} else {
-		persistErr = w.broker.FailJob(finishCtx, w.config.ID, job.ID, lastError)
+		persistErr = w.broker.FailJob(finishCtx, w.config.ID, job.ID, lastError, true)
 	}
 	if persistErr != nil {
 		w.logger.Error("job result persistence failed",

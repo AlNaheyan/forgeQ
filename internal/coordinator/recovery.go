@@ -13,7 +13,7 @@ import (
 const defaultRecoveryBatchSize = 100
 
 type expiredLeaseRepository interface {
-	RequeueExpiredLeases(context.Context, int) ([]jobs.Job, error)
+	RecoverExpiredAttempts(context.Context, int) ([]jobs.Job, error)
 }
 
 type recoveryQueue interface {
@@ -54,7 +54,7 @@ func NewRecoveryScanner(
 // RecoverOnce atomically requeues one batch of expired leases in the durable
 // store, then makes every returned job visible in the ready queue.
 func (s *RecoveryScanner) RecoverOnce(ctx context.Context) (int, error) {
-	expired, err := s.repository.RequeueExpiredLeases(ctx, s.batchSize)
+	expired, err := s.repository.RecoverExpiredAttempts(ctx, s.batchSize)
 	if err != nil {
 		return 0, fmt.Errorf("requeue expired leases: %w", err)
 	}

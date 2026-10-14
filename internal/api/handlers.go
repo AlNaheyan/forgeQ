@@ -39,6 +39,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /v1/jobs", s.listJobs)
 	mux.HandleFunc("GET /v1/jobs/{id}", s.getJob)
 	mux.HandleFunc("POST /v1/jobs/{id}/cancel", s.cancelJob)
+	mux.HandleFunc("POST /v1/jobs/{id}/retry", s.retryJob)
 	mux.HandleFunc("GET /v1/workers", s.listWorkers)
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("GET /readyz", s.readiness)
@@ -149,6 +150,21 @@ func (s *Server) cancelJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, job)
+}
+
+func (s *Server) retryJob(w http.ResponseWriter, r *http.Request) {
+	result, err := s.jobs.Retry(r.Context(), r.PathValue("id"))
+	if err != nil {
+		s.writeServiceError(w, err)
+		return
+	}
+	if result.EnqueueError != nil {
+		s.logger.Warn("job retry persisted but enqueue failed; reconciliation will retry",
+			"job_id", result.Job.ID,
+			"error", result.EnqueueError,
+		)
+	}
+	writeJSON(w, http.StatusOK, result.Job)
 }
 
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {

@@ -21,7 +21,7 @@ type recoveryRepositoryStub struct {
 	called    chan struct{}
 }
 
-func (r *recoveryRepositoryStub) RequeueExpiredLeases(_ context.Context, limit int) ([]jobs.Job, error) {
+func (r *recoveryRepositoryStub) RecoverExpiredAttempts(_ context.Context, limit int) ([]jobs.Job, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.calls++

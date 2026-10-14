@@ -18,8 +18,8 @@ func TestLoadUsesDevelopmentDefaults(t *testing.T) {
 	if cfg.HTTPPort != 8080 || cfg.GRPCPort != 9090 {
 		t.Fatalf("unexpected ports: HTTP=%d gRPC=%d", cfg.HTTPPort, cfg.GRPCPort)
 	}
-	if cfg.HeartbeatInterval != 5*time.Second || cfg.WorkerConcurrency != 4 || cfg.LeaseScanInterval != time.Second {
-		t.Fatalf("unexpected worker defaults: heartbeat=%s concurrency=%d lease_scan=%s", cfg.HeartbeatInterval, cfg.WorkerConcurrency, cfg.LeaseScanInterval)
+	if cfg.HeartbeatInterval != 5*time.Second || cfg.WorkerConcurrency != 4 || cfg.LeaseScanInterval != time.Second || cfg.RetryBaseDelay != 2*time.Second || cfg.RetryMaxDelay != time.Minute {
+		t.Fatalf("unexpected defaults: %+v", cfg)
 	}
 	if len(cfg.WorkerJobTypes) != 2 || cfg.WorkerJobTypes[0] != "sleep" || cfg.WorkerPollInterval != 250*time.Millisecond {
 		t.Fatalf("unexpected worker runtime defaults: types=%v poll=%s", cfg.WorkerJobTypes, cfg.WorkerPollInterval)
@@ -40,13 +40,15 @@ func TestLoadReadsOverrides(t *testing.T) {
 		"WORKER_JOB_TYPES":    "sleep, fail, sleep",
 		"LEASE_DURATION":      "45s",
 		"LEASE_SCAN_INTERVAL": "2s",
+		"RETRY_BASE_DELAY":    "3s",
+		"RETRY_MAX_DELAY":     "20s",
 		"LOG_LEVEL":           "debug",
 	}))
 	if err != nil {
 		t.Fatalf("load overrides: %v", err)
 	}
 
-	if cfg.HTTPPort != 8181 || cfg.WorkerConcurrency != 12 || cfg.WorkerID != "worker-test" || len(cfg.WorkerJobTypes) != 2 || cfg.LeaseDuration != 45*time.Second || cfg.LeaseScanInterval != 2*time.Second || cfg.LogLevel != "debug" {
+	if cfg.HTTPPort != 8181 || cfg.WorkerConcurrency != 12 || cfg.WorkerID != "worker-test" || len(cfg.WorkerJobTypes) != 2 || cfg.LeaseDuration != 45*time.Second || cfg.LeaseScanInterval != 2*time.Second || cfg.RetryBaseDelay != 3*time.Second || cfg.RetryMaxDelay != 20*time.Second || cfg.LogLevel != "debug" {
 		t.Fatalf("overrides were not applied: %+v", cfg)
 	}
 }
@@ -69,6 +71,7 @@ func TestLoadRejectsInvalidSettings(t *testing.T) {
 		{name: "bad duration", env: map[string]string{"LEASE_DURATION": "later"}, want: "LEASE_DURATION must be a duration"},
 		{name: "heartbeat relationship", env: map[string]string{"WORKER_TIMEOUT": "5s"}, want: "WORKER_TIMEOUT must be greater"},
 		{name: "lease relationship", env: map[string]string{"LEASE_RENEW_INTERVAL": "30s"}, want: "LEASE_RENEW_INTERVAL must be less"},
+		{name: "retry relationship", env: map[string]string{"RETRY_BASE_DELAY": "61s"}, want: "RETRY_BASE_DELAY must not exceed"},
 		{name: "empty job type", env: map[string]string{"WORKER_JOB_TYPES": "sleep,,fail"}, want: "WORKER_JOB_TYPES must contain non-empty"},
 	}
 

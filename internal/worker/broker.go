@@ -12,7 +12,7 @@ type Broker interface {
 	ClaimJob(context.Context, string, []string) (jobs.Job, error)
 	RenewLease(context.Context, string, string) (time.Time, error)
 	CompleteJob(context.Context, string, string, []byte) error
-	FailJob(context.Context, string, string, string) error
+	FailJob(context.Context, string, string, string, bool) error
 }
 
 type LocalBroker struct {
@@ -53,7 +53,7 @@ func (b *LocalBroker) RenewLease(context.Context, string, string) (time.Time, er
 	return time.Now().Add(24 * time.Hour), nil
 }
 
-func (b *LocalBroker) FailJob(ctx context.Context, _ string, jobID, failure string) error {
+func (b *LocalBroker) FailJob(ctx context.Context, _ string, jobID, failure string, _ bool) error {
 	_, err := b.repository.FinishJob(ctx, jobID, jobs.StatusFailed, nil, failure)
 	return err
 }

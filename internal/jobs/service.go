@@ -11,6 +11,7 @@ type Repository interface {
 	ListJobs(context.Context, ListFilter) ([]Job, string, error)
 	UpdateStatus(context.Context, string, Status) (Job, error)
 	CancelJob(context.Context, string) (Job, error)
+	RetryDeadLetter(context.Context, string) (Job, error)
 	ListQueuedJobs(context.Context, int) ([]Job, error)
 }
 
@@ -21,6 +22,11 @@ type Enqueuer interface {
 type Submission struct {
 	Job          Job
 	Created      bool
+	EnqueueError error
+}
+
+type RetryResult struct {
+	Job          Job
 	EnqueueError error
 }
 
@@ -69,4 +75,21 @@ func (s *Service) List(ctx context.Context, filter ListFilter) ([]Job, string, e
 
 func (s *Service) Cancel(ctx context.Context, id string) (Job, error) {
 	return s.repository.CancelJob(ctx, id)
+}
+
+// Retry moves a dead-lettered job back to the durable queued state before
+// making it visible to workers. A queue error is returned separately because
+// the durable transition has already succeeded and reconciliation can repair
+// the queue entry.
+func (s *Service) Retry(ctx context.Context, id string) (RetryResult, error) {
+	job, err := s.repository.RetryDeadLetter(ctx, id)
+	if err != nil {
+		return RetryResult{}, err
+	}
+
+	result := RetryResult{Job: job}
+	if s.queue != nil {
+		result.EnqueueError = s.queue.Enqueue(ctx, job.ID, job.Priority, job.CreatedAt)
+	}
+	return result, nil
 }

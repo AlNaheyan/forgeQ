@@ -5,10 +5,10 @@ Go. It is being built to make coordination, failure recovery, at-least-once
 delivery, idempotency, backpressure, and observability explicit rather than
 hiding them behind a workflow framework.
 
-Waves 0 through 5 are complete: ForgeQueue has a durable job API, Redis-backed
+Waves 0 through 6 are complete: ForgeQueue has a durable job API, Redis-backed
 queues, PostgreSQL reconciliation, bounded-concurrency workers, and an explicit
 gRPC coordinator that owns worker registration, heartbeats, health, durable job
-leases, renewal, and crash recovery.
+leases, renewal, crash recovery, attempt tracking, retries, and dead-lettering.
 
 ## Planned architecture
 
@@ -83,14 +83,17 @@ requests work through gRPC. The coordinator atomically leases queued jobs in
 PostgreSQL before they start. Long-running handlers renew their leases; if a
 worker disappears, the coordinator requeues its job after the lease expires.
 A successful `sleep` job moves from `queued` to `leased` to `running` to
-`succeeded`.
+`succeeded`. Retryable failures enter `retry_wait` with capped exponential
+backoff and jitter. Exhausted jobs enter `dead_letter` and can be manually
+requeued from the dashboard or API.
 
-Available Wave 1 endpoints:
+Available HTTP endpoints:
 
 - `POST /v1/jobs`
 - `GET /v1/jobs/{id}`
 - `GET /v1/jobs?status=&type=&limit=&cursor=`
 - `POST /v1/jobs/{id}/cancel`
+- `POST /v1/jobs/{id}/retry`
 - `GET /v1/workers`
 - `GET /healthz`
 - `GET /readyz`
