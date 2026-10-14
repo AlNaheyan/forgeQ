@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"time"
 
 	"forgequeue/internal/jobs"
 	"forgequeue/internal/queue"
@@ -9,6 +10,7 @@ import (
 
 type Broker interface {
 	ClaimJob(context.Context, string, []string) (jobs.Job, error)
+	RenewLease(context.Context, string, string) (time.Time, error)
 	CompleteJob(context.Context, string, string, []byte) error
 	FailJob(context.Context, string, string, string) error
 }
@@ -43,6 +45,12 @@ func (b *LocalBroker) ClaimJob(ctx context.Context, _ string, supportedTypes []s
 func (b *LocalBroker) CompleteJob(ctx context.Context, _ string, jobID string, result []byte) error {
 	_, err := b.repository.FinishJob(ctx, jobID, jobs.StatusSucceeded, result, "")
 	return err
+}
+
+// RenewLease is a no-op for the in-process broker retained by unit tests and
+// local callers. Durable ownership is enforced by the gRPC coordinator path.
+func (b *LocalBroker) RenewLease(context.Context, string, string) (time.Time, error) {
+	return time.Now().Add(24 * time.Hour), nil
 }
 
 func (b *LocalBroker) FailJob(ctx context.Context, _ string, jobID, failure string) error {

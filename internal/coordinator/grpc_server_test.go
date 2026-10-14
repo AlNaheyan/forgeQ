@@ -31,11 +31,26 @@ func (r *serverTestRepository) GetJob(_ context.Context, id string) (jobs.Job, e
 	return job, nil
 }
 
-func (r *serverTestRepository) ClaimJob(_ context.Context, id string) (jobs.Job, error) {
+func (r *serverTestRepository) LeaseJob(_ context.Context, id, workerID string, duration time.Duration) (jobs.Job, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	job, ok := r.jobs[id]
 	if !ok || job.Status != jobs.StatusQueued {
+		return jobs.Job{}, jobs.ErrClaimConflict
+	}
+	expiresAt := time.Now().Add(duration)
+	job.Status = jobs.StatusLeased
+	job.LeaseOwner = workerID
+	job.LeaseExpiresAt = &expiresAt
+	r.jobs[id] = job
+	return job, nil
+}
+
+func (r *serverTestRepository) StartLeasedJob(_ context.Context, id, workerID string) (jobs.Job, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	job, ok := r.jobs[id]
+	if !ok || job.Status != jobs.StatusLeased || job.LeaseOwner != workerID || job.LeaseExpiresAt == nil || !job.LeaseExpiresAt.After(time.Now()) {
 		return jobs.Job{}, jobs.ErrClaimConflict
 	}
 	job.Status = jobs.StatusRunning
@@ -44,17 +59,32 @@ func (r *serverTestRepository) ClaimJob(_ context.Context, id string) (jobs.Job,
 	return job, nil
 }
 
-func (r *serverTestRepository) FinishJob(_ context.Context, id string, target jobs.Status, result []byte, lastError string) (jobs.Job, error) {
+func (r *serverTestRepository) RenewLease(_ context.Context, id, workerID string, duration time.Duration) (jobs.Job, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	job, ok := r.jobs[id]
+	if !ok || job.LeaseOwner != workerID || job.LeaseExpiresAt == nil || !job.LeaseExpiresAt.After(time.Now()) {
+		return jobs.Job{}, jobs.ErrClaimConflict
+	}
+	expiresAt := time.Now().Add(duration)
+	job.LeaseExpiresAt = &expiresAt
+	r.jobs[id] = job
+	return job, nil
+}
+
+func (r *serverTestRepository) FinishLeasedJob(_ context.Context, id, workerID string, target jobs.Status, result []byte, lastError string) (jobs.Job, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	job, ok := r.jobs[id]
 	if !ok {
 		return jobs.Job{}, jobs.ErrNotFound
 	}
-	if job.Status != jobs.StatusRunning {
+	if job.Status != jobs.StatusRunning || job.LeaseOwner != workerID || job.LeaseExpiresAt == nil || !job.LeaseExpiresAt.After(time.Now()) {
 		return jobs.Job{}, jobs.ErrInvalidTransition
 	}
 	job.Status = target
+	job.LeaseOwner = ""
+	job.LeaseExpiresAt = nil
 	job.Result = append(json.RawMessage(nil), result...)
 	job.LastError = lastError
 	r.jobs[id] = job
@@ -123,11 +153,16 @@ func TestGRPCServerWorkerAndJobLifecycle(t *testing.T) {
 	}
 
 	claimed, err := server.ClaimJob(context.Background(), &workerpb.ClaimJobRequest{WorkerId: "worker-1"})
-	if err != nil || claimed.GetJob().GetStatus() != workerpb.JobStatus_JOB_STATUS_RUNNING {
+	if err != nil || claimed.GetJob().GetStatus() != workerpb.JobStatus_JOB_STATUS_LEASED || claimed.GetJob().GetLeaseOwner() != "worker-1" {
 		t.Fatalf("claim: response=%v err=%v", claimed, err)
 	}
-	if _, err := server.StartJob(context.Background(), &workerpb.StartJobRequest{WorkerId: "worker-1", JobId: "job-1"}); err != nil {
+	started, err := server.StartJob(context.Background(), &workerpb.StartJobRequest{WorkerId: "worker-1", JobId: "job-1"})
+	if err != nil || started.GetJob().GetStatus() != workerpb.JobStatus_JOB_STATUS_RUNNING || started.GetJob().GetAttemptCount() != 1 {
 		t.Fatalf("start: %v", err)
+	}
+	renewed, err := server.RenewLease(context.Background(), &workerpb.RenewLeaseRequest{WorkerId: "worker-1", JobId: "job-1"})
+	if err != nil || renewed.GetLeaseExpiresAt() == nil {
+		t.Fatalf("renew: response=%v err=%v", renewed, err)
 	}
 	completed, err := server.CompleteJob(context.Background(), &workerpb.CompleteJobRequest{
 		WorkerId: "worker-1", JobId: "job-1", ResultJson: []byte(`{"slept_ms":1}`),

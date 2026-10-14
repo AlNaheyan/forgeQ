@@ -69,6 +69,7 @@ services:
       HEARTBEAT_INTERVAL: 5s
       WORKER_TIMEOUT: 15s
       LEASE_DURATION: 30s
+      LEASE_SCAN_INTERVAL: 1s
       LOG_LEVEL: info
     ports:
       - "9090:9090"
@@ -89,6 +90,7 @@ services:
       WORKER_ID: worker-1
       WORKER_CONCURRENCY: 4
       WORKER_JOB_TYPES: sleep,fail
+      LEASE_RENEW_INTERVAL: 10s
       LOG_LEVEL: info
     depends_on:
       coordinator:

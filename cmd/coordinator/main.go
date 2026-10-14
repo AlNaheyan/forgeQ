@@ -72,6 +72,8 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("initialize coordinator service: %w", err)
 	}
+	recoveryScanner := coordinator.NewRecoveryScanner(repository, jobQueue, logger, 100)
+	go recoveryScanner.Run(ctx, cfg.LeaseScanInterval)
 
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.GRPCPort))
 	if err != nil {

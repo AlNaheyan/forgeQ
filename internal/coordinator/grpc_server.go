@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"forgequeue/internal/jobs"
@@ -20,8 +19,10 @@ import (
 
 type jobRepository interface {
 	GetJob(context.Context, string) (jobs.Job, error)
-	ClaimJob(context.Context, string) (jobs.Job, error)
-	FinishJob(context.Context, string, jobs.Status, []byte, string) (jobs.Job, error)
+	LeaseJob(context.Context, string, string, time.Duration) (jobs.Job, error)
+	StartLeasedJob(context.Context, string, string) (jobs.Job, error)
+	RenewLease(context.Context, string, string, time.Duration) (jobs.Job, error)
+	FinishLeasedJob(context.Context, string, string, jobs.Status, []byte, string) (jobs.Job, error)
 }
 
 type jobQueue interface {
@@ -35,8 +36,8 @@ type ServerConfig struct {
 	LeaseDuration     time.Duration
 }
 
-// GRPCServer implements the worker control plane. Job ownership is recorded
-// in memory until durable leases replace it in Wave 5.
+// GRPCServer implements the worker control plane. PostgreSQL leases are the
+// authority for job ownership, so coordinator restarts do not lose assignments.
 type GRPCServer struct {
 	workerpb.UnimplementedWorkerCoordinatorServer
 
@@ -45,9 +46,6 @@ type GRPCServer struct {
 	queue             jobQueue
 	heartbeatInterval time.Duration
 	leaseDuration     time.Duration
-
-	assignmentsMu sync.RWMutex
-	assignments   map[string]string
 }
 
 func NewGRPCServer(config ServerConfig, registry *Registry, repository jobRepository, queue jobQueue) (*GRPCServer, error) {
@@ -63,7 +61,6 @@ func NewGRPCServer(config ServerConfig, registry *Registry, repository jobReposi
 		queue:             queue,
 		heartbeatInterval: config.HeartbeatInterval,
 		leaseDuration:     config.LeaseDuration,
-		assignments:       make(map[string]string),
 	}, nil
 }
 
@@ -161,16 +158,13 @@ func (s *GRPCServer) ClaimJob(ctx context.Context, request *workerpb.ClaimJobReq
 			continue
 		}
 
-		claimed, err := s.repository.ClaimJob(ctx, candidate.ID)
+		claimed, err := s.repository.LeaseJob(ctx, candidate.ID, worker.WorkerID, s.leaseDuration)
 		if errors.Is(err, jobs.ErrClaimConflict) {
 			continue
 		}
 		if err != nil {
 			return nil, status.Error(codes.Unavailable, fmt.Sprintf("claim job: %v", err))
 		}
-		s.assignmentsMu.Lock()
-		s.assignments[claimed.ID] = worker.WorkerID
-		s.assignmentsMu.Unlock()
 		return &workerpb.ClaimJobResponse{
 			Job:           jobToProto(claimed),
 			LeaseDuration: durationpb.New(s.leaseDuration),
@@ -181,48 +175,53 @@ func (s *GRPCServer) ClaimJob(ctx context.Context, request *workerpb.ClaimJobReq
 }
 
 func (s *GRPCServer) StartJob(ctx context.Context, request *workerpb.StartJobRequest) (*workerpb.StartJobResponse, error) {
-	if err := s.requireAssignment(request.GetWorkerId(), request.GetJobId()); err != nil {
-		return nil, err
+	if request == nil || request.GetWorkerId() == "" || request.GetJobId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "worker_id and job_id are required")
 	}
-	job, err := s.repository.GetJob(ctx, request.GetJobId())
+	job, err := s.repository.StartLeasedJob(ctx, request.GetJobId(), request.GetWorkerId())
 	if err != nil {
 		return nil, repositoryStatusError(err)
-	}
-	if job.Status != jobs.StatusRunning {
-		return nil, status.Error(codes.FailedPrecondition, "claimed job is not running")
 	}
 	return &workerpb.StartJobResponse{Job: jobToProto(job)}, nil
 }
 
 func (s *GRPCServer) CompleteJob(ctx context.Context, request *workerpb.CompleteJobRequest) (*workerpb.CompleteJobResponse, error) {
-	if err := s.requireAssignment(request.GetWorkerId(), request.GetJobId()); err != nil {
-		return nil, err
+	if request == nil || request.GetWorkerId() == "" || request.GetJobId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "worker_id and job_id are required")
 	}
 	if len(request.GetResultJson()) > 0 && !json.Valid(request.GetResultJson()) {
 		return nil, status.Error(codes.InvalidArgument, "result_json must contain valid JSON")
 	}
-	job, err := s.repository.FinishJob(ctx, request.GetJobId(), jobs.StatusSucceeded, request.GetResultJson(), "")
+	job, err := s.repository.FinishLeasedJob(ctx, request.GetJobId(), request.GetWorkerId(), jobs.StatusSucceeded, request.GetResultJson(), "")
 	if err != nil {
 		return nil, repositoryStatusError(err)
 	}
-	s.deleteAssignment(request.GetJobId())
 	return &workerpb.CompleteJobResponse{Job: jobToProto(job)}, nil
 }
 
 func (s *GRPCServer) FailJob(ctx context.Context, request *workerpb.FailJobRequest) (*workerpb.FailJobResponse, error) {
-	if err := s.requireAssignment(request.GetWorkerId(), request.GetJobId()); err != nil {
-		return nil, err
+	if request == nil || request.GetWorkerId() == "" || request.GetJobId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "worker_id and job_id are required")
 	}
-	job, err := s.repository.FinishJob(ctx, request.GetJobId(), jobs.StatusFailed, nil, request.GetError())
+	job, err := s.repository.FinishLeasedJob(ctx, request.GetJobId(), request.GetWorkerId(), jobs.StatusFailed, nil, request.GetError())
 	if err != nil {
 		return nil, repositoryStatusError(err)
 	}
-	s.deleteAssignment(request.GetJobId())
 	return &workerpb.FailJobResponse{Job: jobToProto(job)}, nil
 }
 
-func (s *GRPCServer) RenewLease(context.Context, *workerpb.RenewLeaseRequest) (*workerpb.RenewLeaseResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "leases are introduced in Wave 5")
+func (s *GRPCServer) RenewLease(ctx context.Context, request *workerpb.RenewLeaseRequest) (*workerpb.RenewLeaseResponse, error) {
+	if request == nil || request.GetWorkerId() == "" || request.GetJobId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "worker_id and job_id are required")
+	}
+	job, err := s.repository.RenewLease(ctx, request.GetJobId(), request.GetWorkerId(), s.leaseDuration)
+	if err != nil {
+		return nil, repositoryStatusError(err)
+	}
+	if job.LeaseExpiresAt == nil {
+		return nil, status.Error(codes.Internal, "repository returned a lease without an expiration")
+	}
+	return &workerpb.RenewLeaseResponse{LeaseExpiresAt: timestamppb.New(*job.LeaseExpiresAt)}, nil
 }
 
 func (s *GRPCServer) ListWorkers(_ context.Context, request *workerpb.ListWorkersRequest) (*workerpb.ListWorkersResponse, error) {
@@ -238,25 +237,6 @@ func (s *GRPCServer) ListWorkers(_ context.Context, request *workerpb.ListWorker
 		}
 	}
 	return response, nil
-}
-
-func (s *GRPCServer) requireAssignment(workerID, jobID string) error {
-	if workerID == "" || jobID == "" {
-		return status.Error(codes.InvalidArgument, "worker_id and job_id are required")
-	}
-	s.assignmentsMu.RLock()
-	assignedWorker, ok := s.assignments[jobID]
-	s.assignmentsMu.RUnlock()
-	if !ok || assignedWorker != workerID {
-		return status.Error(codes.PermissionDenied, "job is not assigned to this worker")
-	}
-	return nil
-}
-
-func (s *GRPCServer) deleteAssignment(jobID string) {
-	s.assignmentsMu.Lock()
-	delete(s.assignments, jobID)
-	s.assignmentsMu.Unlock()
 }
 
 func repositoryStatusError(err error) error {

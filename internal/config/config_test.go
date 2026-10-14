@@ -18,8 +18,8 @@ func TestLoadUsesDevelopmentDefaults(t *testing.T) {
 	if cfg.HTTPPort != 8080 || cfg.GRPCPort != 9090 {
 		t.Fatalf("unexpected ports: HTTP=%d gRPC=%d", cfg.HTTPPort, cfg.GRPCPort)
 	}
-	if cfg.HeartbeatInterval != 5*time.Second || cfg.WorkerConcurrency != 4 {
-		t.Fatalf("unexpected worker defaults: heartbeat=%s concurrency=%d", cfg.HeartbeatInterval, cfg.WorkerConcurrency)
+	if cfg.HeartbeatInterval != 5*time.Second || cfg.WorkerConcurrency != 4 || cfg.LeaseScanInterval != time.Second {
+		t.Fatalf("unexpected worker defaults: heartbeat=%s concurrency=%d lease_scan=%s", cfg.HeartbeatInterval, cfg.WorkerConcurrency, cfg.LeaseScanInterval)
 	}
 	if len(cfg.WorkerJobTypes) != 2 || cfg.WorkerJobTypes[0] != "sleep" || cfg.WorkerPollInterval != 250*time.Millisecond {
 		t.Fatalf("unexpected worker runtime defaults: types=%v poll=%s", cfg.WorkerJobTypes, cfg.WorkerPollInterval)
@@ -34,18 +34,19 @@ func TestLoadUsesDevelopmentDefaults(t *testing.T) {
 
 func TestLoadReadsOverrides(t *testing.T) {
 	cfg, err := load("worker", mapLookup(map[string]string{
-		"HTTP_PORT":          "8181",
-		"WORKER_CONCURRENCY": "12",
-		"WORKER_ID":          "worker-test",
-		"WORKER_JOB_TYPES":   "sleep, fail, sleep",
-		"LEASE_DURATION":     "45s",
-		"LOG_LEVEL":          "debug",
+		"HTTP_PORT":           "8181",
+		"WORKER_CONCURRENCY":  "12",
+		"WORKER_ID":           "worker-test",
+		"WORKER_JOB_TYPES":    "sleep, fail, sleep",
+		"LEASE_DURATION":      "45s",
+		"LEASE_SCAN_INTERVAL": "2s",
+		"LOG_LEVEL":           "debug",
 	}))
 	if err != nil {
 		t.Fatalf("load overrides: %v", err)
 	}
 
-	if cfg.HTTPPort != 8181 || cfg.WorkerConcurrency != 12 || cfg.WorkerID != "worker-test" || len(cfg.WorkerJobTypes) != 2 || cfg.LeaseDuration != 45*time.Second || cfg.LogLevel != "debug" {
+	if cfg.HTTPPort != 8181 || cfg.WorkerConcurrency != 12 || cfg.WorkerID != "worker-test" || len(cfg.WorkerJobTypes) != 2 || cfg.LeaseDuration != 45*time.Second || cfg.LeaseScanInterval != 2*time.Second || cfg.LogLevel != "debug" {
 		t.Fatalf("overrides were not applied: %+v", cfg)
 	}
 }

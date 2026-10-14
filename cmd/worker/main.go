@@ -47,10 +47,11 @@ func run() error {
 	}
 
 	process, err := workerpkg.NewWithBroker(workerpkg.Config{
-		ID:           cfg.WorkerID,
-		Concurrency:  cfg.WorkerConcurrency,
-		PollInterval: cfg.WorkerPollInterval,
-		JobTypes:     cfg.WorkerJobTypes,
+		ID:                 cfg.WorkerID,
+		Concurrency:        cfg.WorkerConcurrency,
+		PollInterval:       cfg.WorkerPollInterval,
+		LeaseRenewInterval: cfg.LeaseRenewInterval,
+		JobTypes:           cfg.WorkerJobTypes,
 	}, broker, workerpkg.BuiltInHandlers(), logger)
 	if err != nil {
 		return fmt.Errorf("initialize worker: %w", err)

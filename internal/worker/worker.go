@@ -30,10 +30,11 @@ type workQueue interface {
 }
 
 type Config struct {
-	ID           string
-	Concurrency  int
-	PollInterval time.Duration
-	JobTypes     []string
+	ID                 string
+	Concurrency        int
+	PollInterval       time.Duration
+	LeaseRenewInterval time.Duration
+	JobTypes           []string
 }
 
 type Worker struct {
@@ -41,6 +42,7 @@ type Worker struct {
 	broker     Broker
 	handlers   map[string]Handler
 	logger     *slog.Logger
+	renewer    *LeaseRenewer
 	activeJobs atomic.Int64
 }
 
@@ -66,6 +68,9 @@ func NewWithBroker(config Config, broker Broker, handlers map[string]Handler, lo
 	if config.PollInterval <= 0 {
 		return nil, errors.New("worker poll interval must be greater than zero")
 	}
+	if config.LeaseRenewInterval < 0 {
+		return nil, errors.New("worker lease renewal interval cannot be negative")
+	}
 	if strings.TrimSpace(config.ID) == "" {
 		id, err := generateID()
 		if err != nil {
@@ -84,11 +89,20 @@ func NewWithBroker(config Config, broker Broker, handlers map[string]Handler, lo
 		}
 		selectedHandlers[jobType] = handler
 	}
+	var renewer *LeaseRenewer
+	if config.LeaseRenewInterval > 0 {
+		var err error
+		renewer, err = NewLeaseRenewer(broker, config.LeaseRenewInterval)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return &Worker{
 		config:   config,
 		broker:   broker,
 		handlers: selectedHandlers,
 		logger:   logger.With("worker_id", config.ID),
+		renewer:  renewer,
 	}, nil
 }
 
@@ -150,7 +164,28 @@ func (w *Worker) Run(ctx context.Context) error {
 
 func (w *Worker) execute(ctx context.Context, job jobs.Job, handler Handler) {
 	startedAt := time.Now()
-	result, executionErr := executeSafely(withAttempt(ctx, job.AttemptCount), handler, job.Payload)
+	executionCtx := withAttempt(ctx, job.AttemptCount)
+	var leaseSession *LeaseSession
+	if w.renewer != nil {
+		var err error
+		leaseSession, err = w.renewer.Start(executionCtx, w.config.ID, job.ID)
+		if err != nil {
+			w.logger.Error("lease renewal could not start", "job_id", job.ID, "error", err)
+			return
+		}
+		executionCtx = leaseSession.Context()
+	}
+	result, executionErr := executeSafely(executionCtx, handler, job.Payload)
+	if leaseSession != nil {
+		if err := leaseSession.Stop(); err != nil {
+			w.logger.Warn("job lease lost; terminal result discarded",
+				"job_id", job.ID,
+				"attempt", job.AttemptCount,
+				"error", err,
+			)
+			return
+		}
+	}
 
 	status := jobs.StatusSucceeded
 	var encodedResult []byte

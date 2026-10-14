@@ -53,6 +53,17 @@ func (b *GRPCBroker) CompleteJob(ctx context.Context, workerID, jobID string, re
 	return err
 }
 
+func (b *GRPCBroker) RenewLease(ctx context.Context, workerID, jobID string) (time.Time, error) {
+	response, err := b.client.RenewLease(ctx, &workerpb.RenewLeaseRequest{
+		WorkerId: workerID,
+		JobId:    jobID,
+	})
+	if err != nil {
+		return time.Time{}, err
+	}
+	return requiredProtoTime(response.GetLeaseExpiresAt(), "lease_expires_at")
+}
+
 func (b *GRPCBroker) FailJob(ctx context.Context, workerID, jobID, failure string) error {
 	_, err := b.client.FailJob(ctx, &workerpb.FailJobRequest{
 		WorkerId:  workerID,
