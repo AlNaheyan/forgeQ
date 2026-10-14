@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -75,5 +76,42 @@ func TestRedisQueueLifecycle(t *testing.T) {
 	due, err := queue.PopDueRetries(ctx, now, 10)
 	if err != nil || len(due) != 1 || due[0] != "due" {
 		t.Fatalf("due retries = %v, err=%v", due, err)
+	}
+
+	if err := queue.Enqueue(ctx, "single-claim", 0, now); err != nil {
+		t.Fatalf("enqueue single claim: %v", err)
+	}
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	var claimers sync.WaitGroup
+	for index := 0; index < 2; index++ {
+		claimers.Add(1)
+		go func() {
+			defer claimers.Done()
+			<-start
+			jobID, err := queue.Dequeue(ctx)
+			if err == nil && jobID != "single-claim" {
+				err = errors.New("dequeued an unexpected job")
+			}
+			results <- err
+		}()
+	}
+	close(start)
+	claimers.Wait()
+	close(results)
+	successes := 0
+	emptyResults := 0
+	for result := range results {
+		switch {
+		case result == nil:
+			successes++
+		case errors.Is(result, ErrEmpty):
+			emptyResults++
+		default:
+			t.Fatalf("unexpected concurrent dequeue result: %v", result)
+		}
+	}
+	if successes != 1 || emptyResults != 1 {
+		t.Fatalf("concurrent dequeue results: successes=%d empty=%d", successes, emptyResults)
 	}
 }

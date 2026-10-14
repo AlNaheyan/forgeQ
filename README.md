@@ -5,9 +5,10 @@ Go. It is being built to make coordination, failure recovery, at-least-once
 delivery, idempotency, backpressure, and observability explicit rather than
 hiding them behind a workflow framework.
 
-The project is under active development. Waves 0 through 2 establish the shared
-service foundation, durable job API, Redis-backed ready/delayed queues, and
-automatic reconciliation from PostgreSQL.
+The first milestone (Waves 0 through 3) is complete: ForgeQueue has a durable
+job API, Redis-backed ready/delayed queues, automatic reconciliation from
+PostgreSQL, and bounded-concurrency workers with built-in `sleep` and `fail`
+handlers.
 
 ## Planned architecture
 
@@ -42,6 +43,12 @@ Start PostgreSQL and Redis:
 docker compose up -d postgres redis
 ```
 
+Or build and run the complete API/worker pipeline:
+
+```bash
+docker compose up --build
+```
+
 PostgreSQL is exposed on port `55432` to avoid colliding with a system database;
 Redis is exposed on `6379`.
 
@@ -61,6 +68,11 @@ curl -X POST http://localhost:8080/v1/jobs \
 
 curl http://localhost:8080/v1/jobs?status=queued
 ```
+
+The worker claims queued jobs atomically in PostgreSQL. A successful `sleep`
+job moves from `queued` to `running` to `succeeded`; its result records the
+actual requested sleep duration. Wave 5 will replace this direct claim with
+lease-based ownership and crash recovery.
 
 Available Wave 1 endpoints:
 
@@ -102,6 +114,7 @@ docker compose down
 - `internal/jobs/`: job model, state machine, and application service
 - `internal/repository/postgres/`: durable job storage
 - `internal/queue/`: Redis queue and PostgreSQL-to-Redis reconciliation
+- `internal/worker/`: worker runtime, concurrency control, and built-in handlers
 - `internal/api/`: HTTP transport
 - `internal/telemetry/`: shared structured logging and, later, metrics
 - `migrations/`: embedded, ordered PostgreSQL migrations

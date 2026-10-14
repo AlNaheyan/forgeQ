@@ -28,6 +28,51 @@ services:
       timeout: 3s
       retries: 10
 
+  api:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        SERVICE: api
+    environment:
+      APP_ENV: development
+      HTTP_PORT: 8080
+      DATABASE_URL: postgres://forgequeue:forgequeue@postgres:5432/forgequeue?sslmode=disable
+      REDIS_ADDR: redis:6379
+      LOG_LEVEL: info
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        SERVICE: worker
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgres://forgequeue:forgequeue@postgres:5432/forgequeue?sslmode=disable
+      REDIS_ADDR: redis:6379
+      WORKER_ID: worker-1
+      WORKER_CONCURRENCY: 4
+      WORKER_JOB_TYPES: sleep,fail
+      LOG_LEVEL: info
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   postgres-data:
   redis-data:

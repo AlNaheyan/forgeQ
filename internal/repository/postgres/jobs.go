@@ -242,6 +242,56 @@ func (r *JobRepository) ListQueuedJobs(ctx context.Context, limit int) ([]jobs.J
 	return result, nil
 }
 
+// ClaimJob atomically moves a queued job to running and records its next
+// attempt number. Leasing replaces this direct claim in Wave 5.
+func (r *JobRepository) ClaimJob(ctx context.Context, id string) (jobs.Job, error) {
+	job, err := scanJob(r.db.QueryRowContext(ctx, `
+		UPDATE jobs
+		SET status = $1,
+			attempt_count = attempt_count + 1,
+			updated_at = NOW()
+		WHERE id = $2 AND status = $3 AND scheduled_at <= NOW()
+		RETURNING `+jobColumns,
+		jobs.StatusRunning, id, jobs.StatusQueued,
+	))
+	if errors.Is(err, sql.ErrNoRows) {
+		return jobs.Job{}, jobs.ErrClaimConflict
+	}
+	if err != nil {
+		return jobs.Job{}, fmt.Errorf("claim job: %w", err)
+	}
+	return job, nil
+}
+
+func (r *JobRepository) FinishJob(
+	ctx context.Context,
+	id string,
+	status jobs.Status,
+	result []byte,
+	lastError string,
+) (jobs.Job, error) {
+	if status != jobs.StatusSucceeded && status != jobs.StatusFailed {
+		return jobs.Job{}, fmt.Errorf("%w: running -> %s", jobs.ErrInvalidTransition, status)
+	}
+	job, err := scanJob(r.db.QueryRowContext(ctx, `
+		UPDATE jobs
+		SET status = $1,
+			result = $2,
+			last_error = NULLIF($3, ''),
+			updated_at = NOW()
+		WHERE id = $4 AND status = $5
+		RETURNING `+jobColumns,
+		status, nullableJSON(result), lastError, id, jobs.StatusRunning,
+	))
+	if errors.Is(err, sql.ErrNoRows) {
+		return jobs.Job{}, fmt.Errorf("%w: job is no longer running", jobs.ErrInvalidTransition)
+	}
+	if err != nil {
+		return jobs.Job{}, fmt.Errorf("finish job: %w", err)
+	}
+	return job, nil
+}
+
 type scanner interface {
 	Scan(...any) error
 }
@@ -299,4 +349,11 @@ func decodeCursor(cursor string) (time.Time, string, error) {
 		return time.Time{}, "", fmt.Errorf("invalid cursor timestamp: %w", err)
 	}
 	return createdAt, parts[1], nil
+}
+
+func nullableJSON(value []byte) any {
+	if len(value) == 0 {
+		return nil
+	}
+	return value
 }

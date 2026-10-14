@@ -36,6 +36,9 @@ type Config struct {
 	DefaultMaxAttempts int
 	MaxQueueDepth      int
 	WorkerConcurrency  int
+	WorkerID           string
+	WorkerJobTypes     []string
+	WorkerPollInterval time.Duration
 
 	LogLevel string
 }
@@ -115,6 +118,18 @@ func load(service string, lookup lookupFunc) (Config, error) {
 	if cfg.WorkerConcurrency, err = intValue(lookup, "WORKER_CONCURRENCY", 4, 1); err != nil {
 		return Config{}, err
 	}
+	cfg.WorkerID, _ = optionalStringValue(lookup, "WORKER_ID")
+	workerJobTypes, err := stringValue(lookup, "WORKER_JOB_TYPES", "sleep,fail")
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.WorkerJobTypes, err = csvValue("WORKER_JOB_TYPES", workerJobTypes)
+	if err != nil {
+		return Config{}, err
+	}
+	if cfg.WorkerPollInterval, err = durationValue(lookup, "WORKER_POLL_INTERVAL", 250*time.Millisecond); err != nil {
+		return Config{}, err
+	}
 	if cfg.LogLevel, err = stringValue(lookup, "LOG_LEVEL", "info"); err != nil {
 		return Config{}, err
 	}
@@ -130,6 +145,31 @@ func load(service string, lookup lookupFunc) (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func optionalStringValue(lookup lookupFunc, key string) (string, bool) {
+	value, ok := lookup(key)
+	return strings.TrimSpace(value), ok
+}
+
+func csvValue(key, raw string) ([]string, error) {
+	seen := make(map[string]struct{})
+	values := make([]string, 0)
+	for _, item := range strings.Split(raw, ",") {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			return nil, fmt.Errorf("%s must contain non-empty comma-separated values", key)
+		}
+		if _, exists := seen[item]; exists {
+			continue
+		}
+		seen[item] = struct{}{}
+		values = append(values, item)
+	}
+	if len(values) == 0 {
+		return nil, fmt.Errorf("%s must contain at least one value", key)
+	}
+	return values, nil
 }
 
 func stringValue(lookup lookupFunc, key, fallback string) (string, error) {
