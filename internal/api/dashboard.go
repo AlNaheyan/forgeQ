@@ -1,0 +1,25 @@
+package api
+
+import (
+	_ "embed"
+	"net/http"
+)
+
+//go:embed dashboard.html
+var dashboardHTML []byte
+
+func (s *Server) dashboardRedirect(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+	http.Redirect(w, r, "/dashboard", http.StatusTemporaryRedirect)
+}
+
+func (s *Server) dashboard(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(dashboardHTML)
+}

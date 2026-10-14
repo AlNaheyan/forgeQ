@@ -33,6 +33,8 @@ func NewServer(service *jobs.Service, ready func(*http.Request) error, logger *s
 
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /", s.dashboardRedirect)
+	mux.HandleFunc("GET /dashboard", s.dashboard)
 	mux.HandleFunc("POST /v1/jobs", s.createJob)
 	mux.HandleFunc("GET /v1/jobs", s.listJobs)
 	mux.HandleFunc("GET /v1/jobs/{id}", s.getJob)

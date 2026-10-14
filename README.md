@@ -52,6 +52,12 @@ Or build and run the complete API/worker pipeline:
 docker compose up --build
 ```
 
+Open the built-in operator dashboard at
+[http://localhost:8080/dashboard](http://localhost:8080/dashboard). It can
+submit jobs, track their state, inspect payloads and results, cancel queued
+work, and show live worker health and capacity. It is embedded in the Go API,
+so there is no separate frontend build or service.
+
 PostgreSQL is exposed on port `55432` to avoid colliding with a system database;
 Redis is exposed on `6379`.
 
