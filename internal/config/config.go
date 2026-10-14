@@ -14,6 +14,10 @@ import (
 const (
 	Development = "development"
 	Production  = "production"
+
+	SchedulerRoundRobin       = "round_robin"
+	SchedulerLeastLoaded      = "least_loaded"
+	SchedulerWeightedCapacity = "weighted_capacity"
 )
 
 // Config contains the shared settings used by ForgeQueue processes.
@@ -44,6 +48,7 @@ type Config struct {
 	WorkerID           string
 	WorkerJobTypes     []string
 	WorkerPollInterval time.Duration
+	SchedulerStrategy  string
 
 	LogLevel string
 }
@@ -150,6 +155,12 @@ func load(service string, lookup lookupFunc) (Config, error) {
 	if cfg.WorkerPollInterval, err = durationValue(lookup, "WORKER_POLL_INTERVAL", 250*time.Millisecond); err != nil {
 		return Config{}, err
 	}
+	if cfg.SchedulerStrategy, err = stringValue(lookup, "SCHEDULER_STRATEGY", SchedulerLeastLoaded); err != nil {
+		return Config{}, err
+	}
+	if !validSchedulerStrategy(cfg.SchedulerStrategy) {
+		return Config{}, fmt.Errorf("SCHEDULER_STRATEGY must be one of round_robin, least_loaded, or weighted_capacity, got %q", cfg.SchedulerStrategy)
+	}
 	if cfg.LogLevel, err = stringValue(lookup, "LOG_LEVEL", "info"); err != nil {
 		return Config{}, err
 	}
@@ -240,6 +251,15 @@ func durationValue(lookup lookupFunc, key string, fallback time.Duration) (time.
 func validLogLevel(level string) bool {
 	switch level {
 	case "debug", "info", "warn", "error":
+		return true
+	default:
+		return false
+	}
+}
+
+func validSchedulerStrategy(strategy string) bool {
+	switch strategy {
+	case SchedulerRoundRobin, SchedulerLeastLoaded, SchedulerWeightedCapacity:
 		return true
 	default:
 		return false

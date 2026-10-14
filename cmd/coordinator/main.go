@@ -65,6 +65,10 @@ func run() error {
 	}
 	repository := postgresrepository.NewJobRepository(db)
 	jobQueue := queue.NewRedisQueue(redisClient, "forgequeue")
+	scheduler, err := newScheduler(cfg.SchedulerStrategy)
+	if err != nil {
+		return fmt.Errorf("initialize scheduler: %w", err)
+	}
 	coordinatorServer, err := coordinator.NewGRPCServer(coordinator.ServerConfig{
 		HeartbeatInterval: cfg.HeartbeatInterval,
 		LeaseDuration:     cfg.LeaseDuration,
@@ -74,7 +78,8 @@ func run() error {
 			coordinator.DefaultRetryJitterFraction,
 			nil,
 		),
-		Logger: logger,
+		Scheduler: scheduler,
+		Logger:    logger,
 	}, registry, repository, jobQueue)
 	if err != nil {
 		return fmt.Errorf("initialize coordinator service: %w", err)
@@ -117,5 +122,18 @@ func run() error {
 		return nil
 	case err := <-serveErrors:
 		return fmt.Errorf("serve coordinator gRPC: %w", err)
+	}
+}
+
+func newScheduler(strategy string) (coordinator.Scheduler, error) {
+	switch strategy {
+	case config.SchedulerRoundRobin:
+		return coordinator.NewRoundRobin(), nil
+	case config.SchedulerLeastLoaded:
+		return coordinator.NewLeastLoaded(), nil
+	case config.SchedulerWeightedCapacity:
+		return coordinator.NewWeightedCapacity(nil), nil
+	default:
+		return nil, fmt.Errorf("unsupported strategy %q", strategy)
 	}
 }

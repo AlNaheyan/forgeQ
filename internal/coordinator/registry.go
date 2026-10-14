@@ -15,6 +15,8 @@ var (
 	ErrInvalidRegistration = errors.New("invalid worker registration")
 	ErrInvalidHeartbeat    = errors.New("invalid worker heartbeat")
 	ErrWorkerNotFound      = errors.New("worker not found")
+	ErrWorkerUnhealthy     = errors.New("worker is unhealthy")
+	ErrWorkerAtCapacity    = errors.New("worker is at capacity")
 )
 
 // Clock allows health transitions to be tested without waiting in real time.
@@ -60,6 +62,7 @@ type WorkerSnapshot struct {
 	LastHeartbeatAt   time.Time
 	ReportedAt        time.Time
 	Health            Health
+	JobsAssignedTotal uint64
 }
 
 type workerState struct {
@@ -67,9 +70,15 @@ type workerState struct {
 	maxConcurrency    int
 	supportedJobTypes []string
 	activeJobs        int
-	registeredAt      time.Time
-	lastHeartbeatAt   time.Time
-	reportedAt        time.Time
+	// reservationsSinceHeartbeat counts claims accepted after the last
+	// heartbeat was reconciled. RecordHeartbeat preserves these reservations
+	// for one heartbeat boundary so a heartbeat produced just before a
+	// concurrent claim cannot erase the newly consumed capacity.
+	reservationsSinceHeartbeat int
+	jobsAssignedTotal          uint64
+	registeredAt               time.Time
+	lastHeartbeatAt            time.Time
+	reportedAt                 time.Time
 }
 
 // Registry stores the coordinator's reconstructable, in-memory worker state.
@@ -96,7 +105,8 @@ func NewRegistry(thresholds HealthThresholds, clock Clock) (*Registry, error) {
 }
 
 // Register adds or replaces a worker registration. Re-registering a worker is
-// treated as a new session and resets its active-job count.
+// treated as a new session and resets its dynamic capacity state. The
+// assignment counter is retained so it remains monotonic for a worker ID.
 func (r *Registry) Register(registration Registration) (WorkerSnapshot, error) {
 	jobTypes, err := validateRegistration(registration)
 	if err != nil {
@@ -113,6 +123,9 @@ func (r *Registry) Register(registration Registration) (WorkerSnapshot, error) {
 	}
 
 	r.mu.Lock()
+	if previous, ok := r.workers[state.workerID]; ok {
+		state.jobsAssignedTotal = previous.jobsAssignedTotal
+	}
 	r.workers[state.workerID] = state
 	r.mu.Unlock()
 
@@ -120,6 +133,12 @@ func (r *Registry) Register(registration Registration) (WorkerSnapshot, error) {
 }
 
 // RecordHeartbeat updates a registered worker's liveness and capacity.
+//
+// A heartbeat is authoritative for work the worker reports, while reservations
+// accepted since the previous heartbeat are added conservatively. This may
+// temporarily understate free capacity for one heartbeat interval when the
+// worker already included a fresh assignment in its report, but it prevents a
+// racing, older heartbeat from erasing a successful reservation.
 func (r *Registry) RecordHeartbeat(heartbeat Heartbeat) (WorkerSnapshot, error) {
 	if err := validateHeartbeat(heartbeat); err != nil {
 		return WorkerSnapshot{}, err
@@ -136,11 +155,108 @@ func (r *Registry) RecordHeartbeat(heartbeat Heartbeat) (WorkerSnapshot, error) 
 		r.mu.Unlock()
 		return WorkerSnapshot{}, fmt.Errorf("%w: timestamp predates the previous heartbeat", ErrInvalidHeartbeat)
 	}
-	state.activeJobs = heartbeat.ActiveJobs
+	state.activeJobs = heartbeat.ActiveJobs + state.reservationsSinceHeartbeat
+	if state.activeJobs > heartbeat.MaxConcurrency {
+		state.activeJobs = heartbeat.MaxConcurrency
+	}
+	state.reservationsSinceHeartbeat = 0
 	state.maxConcurrency = heartbeat.MaxConcurrency
 	state.lastHeartbeatAt = now
 	state.reportedAt = heartbeat.Timestamp
 	r.workers[state.workerID] = state
+	r.mu.Unlock()
+
+	return r.snapshot(state, now), nil
+}
+
+// TryReserve atomically consumes one worker slot. Suspect workers may still be
+// used, matching the coordinator's existing health policy; unhealthy workers
+// and workers with no free capacity are rejected.
+func (r *Registry) TryReserve(workerID string) (WorkerSnapshot, error) {
+	now := r.clock.Now()
+	r.mu.Lock()
+	state, ok := r.workers[workerID]
+	if !ok {
+		r.mu.Unlock()
+		return WorkerSnapshot{}, fmt.Errorf("%w: %q", ErrWorkerNotFound, workerID)
+	}
+	if r.thresholds.health(now, state.lastHeartbeatAt) == HealthUnhealthy {
+		r.mu.Unlock()
+		return WorkerSnapshot{}, fmt.Errorf("%w: %q", ErrWorkerUnhealthy, workerID)
+	}
+	if state.activeJobs >= state.maxConcurrency {
+		r.mu.Unlock()
+		return WorkerSnapshot{}, fmt.Errorf("%w: %q", ErrWorkerAtCapacity, workerID)
+	}
+	state.activeJobs++
+	state.reservationsSinceHeartbeat++
+	r.workers[workerID] = state
+	r.mu.Unlock()
+
+	return r.snapshot(state, now), nil
+}
+
+// ConfirmAssignment records that a reserved slot became a durable job lease.
+// It is deliberately separate from TryReserve so failed lease attempts do not
+// inflate the jobs-assigned metric.
+func (r *Registry) ConfirmAssignment(workerID string) (WorkerSnapshot, error) {
+	now := r.clock.Now()
+	r.mu.Lock()
+	state, ok := r.workers[workerID]
+	if !ok {
+		r.mu.Unlock()
+		return WorkerSnapshot{}, fmt.Errorf("%w: %q", ErrWorkerNotFound, workerID)
+	}
+	state.jobsAssignedTotal++
+	r.workers[workerID] = state
+	r.mu.Unlock()
+
+	return r.snapshot(state, now), nil
+}
+
+// RollbackReservation returns a slot when the durable lease was not created.
+// Unlike Release, it also removes one fresh reservation from heartbeat
+// reconciliation because the caller knows the failed lease corresponds to a
+// TryReserve that has not become an assignment.
+func (r *Registry) RollbackReservation(workerID string) (WorkerSnapshot, error) {
+	now := r.clock.Now()
+	r.mu.Lock()
+	state, ok := r.workers[workerID]
+	if !ok {
+		r.mu.Unlock()
+		return WorkerSnapshot{}, fmt.Errorf("%w: %q", ErrWorkerNotFound, workerID)
+	}
+	if state.activeJobs > 0 {
+		state.activeJobs--
+	}
+	if state.reservationsSinceHeartbeat > 0 {
+		state.reservationsSinceHeartbeat--
+	}
+	r.workers[workerID] = state
+	r.mu.Unlock()
+
+	return r.snapshot(state, now), nil
+}
+
+// Release returns one consumed slot after a durable assignment reaches a
+// terminal state. It intentionally does not consume a fresh reservation: with
+// aggregate worker counts, an older job may finish concurrently with a newer
+// claim, and attributing that completion to the new reservation would allow a
+// stale heartbeat to erase its capacity. Fast assignments that finish before
+// their first heartbeat may therefore remain conservatively counted for one
+// heartbeat interval. The count never drops below zero.
+func (r *Registry) Release(workerID string) (WorkerSnapshot, error) {
+	now := r.clock.Now()
+	r.mu.Lock()
+	state, ok := r.workers[workerID]
+	if !ok {
+		r.mu.Unlock()
+		return WorkerSnapshot{}, fmt.Errorf("%w: %q", ErrWorkerNotFound, workerID)
+	}
+	if state.activeJobs > 0 {
+		state.activeJobs--
+	}
+	r.workers[workerID] = state
 	r.mu.Unlock()
 
 	return r.snapshot(state, now), nil
@@ -175,16 +291,21 @@ func (r *Registry) List() []WorkerSnapshot {
 
 func (r *Registry) snapshot(state workerState, now time.Time) WorkerSnapshot {
 	jobTypes := append([]string(nil), state.supportedJobTypes...)
+	availableCapacity := state.maxConcurrency - state.activeJobs
+	if availableCapacity < 0 {
+		availableCapacity = 0
+	}
 	return WorkerSnapshot{
 		WorkerID:          state.workerID,
 		MaxConcurrency:    state.maxConcurrency,
 		SupportedJobTypes: jobTypes,
 		ActiveJobs:        state.activeJobs,
-		AvailableCapacity: state.maxConcurrency - state.activeJobs,
+		AvailableCapacity: availableCapacity,
 		RegisteredAt:      state.registeredAt,
 		LastHeartbeatAt:   state.lastHeartbeatAt,
 		ReportedAt:        state.reportedAt,
 		Health:            r.thresholds.health(now, state.lastHeartbeatAt),
+		JobsAssignedTotal: state.jobsAssignedTotal,
 	}
 }
 

@@ -5,10 +5,11 @@ Go. It is being built to make coordination, failure recovery, at-least-once
 delivery, idempotency, backpressure, and observability explicit rather than
 hiding them behind a workflow framework.
 
-Waves 0 through 6 are complete: ForgeQueue has a durable job API, Redis-backed
+Waves 0 through 7 are complete: ForgeQueue has a durable job API, Redis-backed
 queues, PostgreSQL reconciliation, bounded-concurrency workers, and an explicit
 gRPC coordinator that owns worker registration, heartbeats, health, durable job
-leases, renewal, crash recovery, attempt tracking, retries, and dead-lettering.
+leases, renewal, crash recovery, attempt tracking, retries, dead-lettering, and
+pluggable multi-worker scheduling.
 
 ## Planned architecture
 
@@ -52,11 +53,21 @@ Or build and run the complete API/worker pipeline:
 docker compose up --build
 ```
 
+Scale the worker fleet while keeping one coordinator:
+
+```bash
+docker compose up -d --build --scale worker=3
+```
+
+Workers receive unique container-hostname IDs automatically. Select
+`least_loaded`, `round_robin`, or `weighted_capacity` with the coordinator's
+`SCHEDULER_STRATEGY` environment variable.
+
 Open the built-in operator dashboard at
 [http://localhost:8080/dashboard](http://localhost:8080/dashboard). It can
 submit jobs, track their state, inspect payloads and results, cancel queued
-work, and show live worker health and capacity. It is embedded in the Go API,
-so there is no separate frontend build or service.
+work, and show live worker health, capacity, and assignment totals. It is
+embedded in the Go API, so there is no separate frontend build or service.
 
 PostgreSQL is exposed on port `55432` to avoid colliding with a system database;
 Redis is exposed on `6379`.

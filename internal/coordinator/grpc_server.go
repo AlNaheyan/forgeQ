@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"forgequeue/internal/jobs"
@@ -38,6 +39,7 @@ type ServerConfig struct {
 	HeartbeatInterval time.Duration
 	LeaseDuration     time.Duration
 	RetryPolicy       RetryPolicy
+	Scheduler         Scheduler
 	Logger            *slog.Logger
 }
 
@@ -52,7 +54,10 @@ type GRPCServer struct {
 	heartbeatInterval time.Duration
 	leaseDuration     time.Duration
 	retryPolicy       RetryPolicy
+	scheduler         Scheduler
 	logger            *slog.Logger
+	offersMu          sync.Mutex
+	offers            map[string]string
 }
 
 func NewGRPCServer(config ServerConfig, registry *Registry, repository jobRepository, queue jobQueue) (*GRPCServer, error) {
@@ -65,6 +70,9 @@ func NewGRPCServer(config ServerConfig, registry *Registry, repository jobReposi
 	if config.Logger == nil {
 		config.Logger = slog.Default()
 	}
+	if config.Scheduler == nil {
+		config.Scheduler = NewLeastLoaded()
+	}
 	return &GRPCServer{
 		registry:          registry,
 		repository:        repository,
@@ -72,7 +80,9 @@ func NewGRPCServer(config ServerConfig, registry *Registry, repository jobReposi
 		heartbeatInterval: config.HeartbeatInterval,
 		leaseDuration:     config.LeaseDuration,
 		retryPolicy:       config.RetryPolicy,
+		scheduler:         config.Scheduler,
 		logger:            config.Logger,
+		offers:            make(map[string]string),
 	}, nil
 }
 
@@ -143,11 +153,6 @@ func (s *GRPCServer) ClaimJob(ctx context.Context, request *workerpb.ClaimJobReq
 	if depth > 1000 {
 		depth = 1000
 	}
-	supported := make(map[string]struct{}, len(worker.SupportedJobTypes))
-	for _, jobType := range worker.SupportedJobTypes {
-		supported[jobType] = struct{}{}
-	}
-
 	for attempt := int64(0); attempt < depth; attempt++ {
 		jobID, err := s.queue.Dequeue(ctx)
 		if errors.Is(err, queue.ErrEmpty) {
@@ -163,19 +168,49 @@ func (s *GRPCServer) ClaimJob(ctx context.Context, request *workerpb.ClaimJobReq
 		if err != nil {
 			return nil, status.Error(codes.Unavailable, fmt.Sprintf("load queued job: %v", err))
 		}
-		if _, ok := supported[candidate.Type]; !ok {
+		selectedWorker, err := s.selectWorker(candidate)
+		if errors.Is(err, ErrNoEligibleWorker) {
 			if err := s.queue.Enqueue(ctx, candidate.ID, candidate.Priority, candidate.CreatedAt); err != nil {
-				return nil, status.Error(codes.Unavailable, fmt.Sprintf("return unsupported job to queue: %v", err))
+				return nil, status.Error(codes.Unavailable, fmt.Sprintf("return unscheduled job to queue: %v", err))
+			}
+			continue
+		}
+		if err != nil {
+			return nil, status.Error(codes.Unavailable, fmt.Sprintf("schedule job: %v", err))
+		}
+		if selectedWorker != worker.WorkerID {
+			if err := s.queue.Enqueue(ctx, candidate.ID, candidate.Priority, candidate.CreatedAt); err != nil {
+				return nil, status.Error(codes.Unavailable, fmt.Sprintf("return job offered to another worker: %v", err))
+			}
+			continue
+		}
+
+		if _, err := s.registry.TryReserve(worker.WorkerID); err != nil {
+			s.deleteOffer(candidate.ID)
+			if enqueueErr := s.queue.Enqueue(ctx, candidate.ID, candidate.Priority, candidate.CreatedAt); enqueueErr != nil {
+				return nil, status.Error(codes.Unavailable, fmt.Sprintf("return unreserved job to queue: %v", enqueueErr))
 			}
 			continue
 		}
 
 		claimed, err := s.repository.LeaseJob(ctx, candidate.ID, worker.WorkerID, s.leaseDuration)
 		if errors.Is(err, jobs.ErrClaimConflict) {
+			_, _ = s.registry.RollbackReservation(worker.WorkerID)
+			s.deleteOffer(candidate.ID)
 			continue
 		}
 		if err != nil {
+			_, _ = s.registry.RollbackReservation(worker.WorkerID)
+			s.deleteOffer(candidate.ID)
 			return nil, status.Error(codes.Unavailable, fmt.Sprintf("claim job: %v", err))
+		}
+		s.deleteOffer(candidate.ID)
+		if _, err := s.registry.ConfirmAssignment(worker.WorkerID); err != nil {
+			s.logger.Warn("durable lease assigned but assignment metric was not recorded",
+				"job_id", claimed.ID,
+				"worker_id", worker.WorkerID,
+				"error", err,
+			)
 		}
 		return &workerpb.ClaimJobResponse{
 			Job:           jobToProto(claimed),
@@ -208,6 +243,7 @@ func (s *GRPCServer) CompleteJob(ctx context.Context, request *workerpb.Complete
 	if err != nil {
 		return nil, repositoryStatusError(err)
 	}
+	_, _ = s.registry.Release(request.GetWorkerId())
 	return &workerpb.CompleteJobResponse{Job: jobToProto(job)}, nil
 }
 
@@ -227,6 +263,7 @@ func (s *GRPCServer) FailJob(ctx context.Context, request *workerpb.FailJobReque
 	if err != nil {
 		return nil, repositoryStatusError(err)
 	}
+	_, _ = s.registry.Release(request.GetWorkerId())
 	if job.Status == jobs.StatusRetryWait {
 		if err := s.queue.ScheduleRetry(ctx, job.ID, job.ScheduledAt); err != nil {
 			s.logger.Warn("retry persisted but delayed enqueue failed; promoter will recover from PostgreSQL",
@@ -237,6 +274,31 @@ func (s *GRPCServer) FailJob(ctx context.Context, request *workerpb.FailJobReque
 		}
 	}
 	return &workerpb.FailJobResponse{Job: jobToProto(job)}, nil
+}
+
+func (s *GRPCServer) selectWorker(job jobs.Job) (string, error) {
+	s.offersMu.Lock()
+	defer s.offersMu.Unlock()
+
+	if workerID, ok := s.offers[job.ID]; ok {
+		if snapshot, exists := s.registry.Get(workerID); exists && len(eligibleWorkers(job, []WorkerSnapshot{snapshot})) == 1 {
+			return workerID, nil
+		}
+		delete(s.offers, job.ID)
+	}
+
+	selected, err := s.scheduler.SelectWorker(job, s.registry.List())
+	if err != nil {
+		return "", err
+	}
+	s.offers[job.ID] = selected.WorkerID
+	return selected.WorkerID, nil
+}
+
+func (s *GRPCServer) deleteOffer(jobID string) {
+	s.offersMu.Lock()
+	delete(s.offers, jobID)
+	s.offersMu.Unlock()
 }
 
 func (s *GRPCServer) RenewLease(ctx context.Context, request *workerpb.RenewLeaseRequest) (*workerpb.RenewLeaseResponse, error) {
@@ -288,6 +350,7 @@ func workerToProto(snapshot WorkerSnapshot) *workerpb.Worker {
 		SupportedJobTypes: append([]string(nil), snapshot.SupportedJobTypes...),
 		RegisteredAt:      timestamppb.New(snapshot.RegisteredAt),
 		LastHeartbeatAt:   timestamppb.New(snapshot.LastHeartbeatAt),
+		JobsAssignedTotal: snapshot.JobsAssignedTotal,
 	}
 }
 

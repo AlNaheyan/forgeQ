@@ -30,6 +30,9 @@ func TestLoadUsesDevelopmentDefaults(t *testing.T) {
 	if cfg.CoordinatorAddr != "localhost:9090" {
 		t.Fatalf("unexpected coordinator address: %q", cfg.CoordinatorAddr)
 	}
+	if cfg.SchedulerStrategy != SchedulerLeastLoaded {
+		t.Fatalf("unexpected scheduler strategy: %q", cfg.SchedulerStrategy)
+	}
 }
 
 func TestLoadReadsOverrides(t *testing.T) {
@@ -42,13 +45,14 @@ func TestLoadReadsOverrides(t *testing.T) {
 		"LEASE_SCAN_INTERVAL": "2s",
 		"RETRY_BASE_DELAY":    "3s",
 		"RETRY_MAX_DELAY":     "20s",
+		"SCHEDULER_STRATEGY":  "weighted_capacity",
 		"LOG_LEVEL":           "debug",
 	}))
 	if err != nil {
 		t.Fatalf("load overrides: %v", err)
 	}
 
-	if cfg.HTTPPort != 8181 || cfg.WorkerConcurrency != 12 || cfg.WorkerID != "worker-test" || len(cfg.WorkerJobTypes) != 2 || cfg.LeaseDuration != 45*time.Second || cfg.LeaseScanInterval != 2*time.Second || cfg.RetryBaseDelay != 3*time.Second || cfg.RetryMaxDelay != 20*time.Second || cfg.LogLevel != "debug" {
+	if cfg.HTTPPort != 8181 || cfg.WorkerConcurrency != 12 || cfg.WorkerID != "worker-test" || len(cfg.WorkerJobTypes) != 2 || cfg.LeaseDuration != 45*time.Second || cfg.LeaseScanInterval != 2*time.Second || cfg.RetryBaseDelay != 3*time.Second || cfg.RetryMaxDelay != 20*time.Second || cfg.SchedulerStrategy != SchedulerWeightedCapacity || cfg.LogLevel != "debug" {
 		t.Fatalf("overrides were not applied: %+v", cfg)
 	}
 }
@@ -72,6 +76,7 @@ func TestLoadRejectsInvalidSettings(t *testing.T) {
 		{name: "heartbeat relationship", env: map[string]string{"WORKER_TIMEOUT": "5s"}, want: "WORKER_TIMEOUT must be greater"},
 		{name: "lease relationship", env: map[string]string{"LEASE_RENEW_INTERVAL": "30s"}, want: "LEASE_RENEW_INTERVAL must be less"},
 		{name: "retry relationship", env: map[string]string{"RETRY_BASE_DELAY": "61s"}, want: "RETRY_BASE_DELAY must not exceed"},
+		{name: "scheduler strategy", env: map[string]string{"SCHEDULER_STRATEGY": "random"}, want: "SCHEDULER_STRATEGY must be one of"},
 		{name: "empty job type", env: map[string]string{"WORKER_JOB_TYPES": "sleep,,fail"}, want: "WORKER_JOB_TYPES must contain non-empty"},
 	}
 

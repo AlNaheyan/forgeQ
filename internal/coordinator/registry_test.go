@@ -229,6 +229,18 @@ func TestReregisterStartsNewSession(t *testing.T) {
 	if _, err := registry.RecordHeartbeat(Heartbeat{WorkerID: "worker", ActiveJobs: 2, MaxConcurrency: 2, Timestamp: start}); err != nil {
 		t.Fatalf("heartbeat: %v", err)
 	}
+	if _, err := registry.TryReserve("worker"); !errors.Is(err, ErrWorkerAtCapacity) {
+		t.Fatalf("reserve full worker: %v", err)
+	}
+	if _, err := registry.Release("worker"); err != nil {
+		t.Fatalf("release heartbeat capacity: %v", err)
+	}
+	if _, err := registry.TryReserve("worker"); err != nil {
+		t.Fatalf("reserve: %v", err)
+	}
+	if _, err := registry.ConfirmAssignment("worker"); err != nil {
+		t.Fatalf("confirm assignment: %v", err)
+	}
 	clock.Advance(time.Second)
 
 	snapshot, err := registry.Register(Registration{WorkerID: "worker", MaxConcurrency: 3, SupportedJobTypes: []string{"compute"}})
@@ -238,8 +250,275 @@ func TestReregisterStartsNewSession(t *testing.T) {
 	if snapshot.ActiveJobs != 0 || snapshot.AvailableCapacity != 3 || !snapshot.ReportedAt.IsZero() {
 		t.Fatalf("new session did not reset dynamic state: %+v", snapshot)
 	}
+	if snapshot.JobsAssignedTotal != 1 {
+		t.Fatalf("assignment total = %d, want 1", snapshot.JobsAssignedTotal)
+	}
 	if !snapshot.RegisteredAt.Equal(start.Add(time.Second)) {
 		t.Fatalf("registration time = %v", snapshot.RegisteredAt)
+	}
+}
+
+func TestTryReserveAndRelease(t *testing.T) {
+	registry := newTestRegistry(t, &fakeClock{now: time.Now()})
+	if _, err := registry.Register(Registration{WorkerID: "worker", MaxConcurrency: 2, SupportedJobTypes: []string{"sleep"}}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	first, err := registry.TryReserve("worker")
+	if err != nil {
+		t.Fatalf("first reserve: %v", err)
+	}
+	if first.ActiveJobs != 1 || first.AvailableCapacity != 1 || first.JobsAssignedTotal != 0 {
+		t.Fatalf("first reservation snapshot: %+v", first)
+	}
+	first, err = registry.ConfirmAssignment("worker")
+	if err != nil {
+		t.Fatalf("confirm first assignment: %v", err)
+	}
+	if first.JobsAssignedTotal != 1 {
+		t.Fatalf("first confirmed assignment total = %d, want 1", first.JobsAssignedTotal)
+	}
+	second, err := registry.TryReserve("worker")
+	if err != nil {
+		t.Fatalf("second reserve: %v", err)
+	}
+	if second.ActiveJobs != 2 || second.AvailableCapacity != 0 || second.JobsAssignedTotal != 1 {
+		t.Fatalf("second reservation snapshot: %+v", second)
+	}
+	second, err = registry.ConfirmAssignment("worker")
+	if err != nil {
+		t.Fatalf("confirm second assignment: %v", err)
+	}
+	if second.JobsAssignedTotal != 2 {
+		t.Fatalf("second confirmed assignment total = %d, want 2", second.JobsAssignedTotal)
+	}
+	if _, err := registry.TryReserve("worker"); !errors.Is(err, ErrWorkerAtCapacity) {
+		t.Fatalf("third reserve error = %v, want ErrWorkerAtCapacity", err)
+	}
+
+	released, err := registry.Release("worker")
+	if err != nil {
+		t.Fatalf("release: %v", err)
+	}
+	if released.ActiveJobs != 1 || released.AvailableCapacity != 1 || released.JobsAssignedTotal != 2 {
+		t.Fatalf("released snapshot: %+v", released)
+	}
+	if _, err := registry.Release("worker"); err != nil {
+		t.Fatalf("second release: %v", err)
+	}
+	empty, err := registry.Release("worker")
+	if err != nil {
+		t.Fatalf("idempotent empty release: %v", err)
+	}
+	if empty.ActiveJobs != 0 || empty.AvailableCapacity != 2 || empty.JobsAssignedTotal != 2 {
+		t.Fatalf("empty release snapshot: %+v", empty)
+	}
+	if _, err := registry.Release("missing"); !errors.Is(err, ErrWorkerNotFound) {
+		t.Fatalf("missing release error = %v, want ErrWorkerNotFound", err)
+	}
+}
+
+func TestTryReserveRejectsMissingUnhealthyAndFullWorkers(t *testing.T) {
+	start := time.Now()
+	clock := &fakeClock{now: start}
+	registry := newTestRegistry(t, clock)
+	if _, err := registry.Register(Registration{WorkerID: "worker", MaxConcurrency: 1, SupportedJobTypes: []string{"sleep"}}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if _, err := registry.TryReserve("missing"); !errors.Is(err, ErrWorkerNotFound) {
+		t.Fatalf("missing reserve error = %v, want ErrWorkerNotFound", err)
+	}
+	if _, err := registry.TryReserve("worker"); err != nil {
+		t.Fatalf("reserve: %v", err)
+	}
+	if _, err := registry.TryReserve("worker"); !errors.Is(err, ErrWorkerAtCapacity) {
+		t.Fatalf("full reserve error = %v, want ErrWorkerAtCapacity", err)
+	}
+	if _, err := registry.RollbackReservation("worker"); err != nil {
+		t.Fatalf("rollback reservation: %v", err)
+	}
+	clock.Advance(15 * time.Second)
+	if _, err := registry.TryReserve("worker"); !errors.Is(err, ErrWorkerUnhealthy) {
+		t.Fatalf("unhealthy reserve error = %v, want ErrWorkerUnhealthy", err)
+	}
+}
+
+func TestConfirmAssignmentRejectsMissingWorker(t *testing.T) {
+	registry := newTestRegistry(t, &fakeClock{now: time.Now()})
+	if _, err := registry.ConfirmAssignment("missing"); !errors.Is(err, ErrWorkerNotFound) {
+		t.Fatalf("confirm missing worker error = %v, want ErrWorkerNotFound", err)
+	}
+}
+
+func TestHeartbeatPreservesConcurrentReservations(t *testing.T) {
+	start := time.Now()
+	registry := newTestRegistry(t, ClockFunc(func() time.Time { return start }))
+	if _, err := registry.Register(Registration{WorkerID: "worker", MaxConcurrency: 4, SupportedJobTypes: []string{"sleep"}}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if _, err := registry.TryReserve("worker"); err != nil {
+		t.Fatalf("reserve: %v", err)
+	}
+
+	// This heartbeat may have been produced immediately before the reservation.
+	// The reserved slot must survive this reconciliation boundary.
+	snapshot, err := registry.RecordHeartbeat(Heartbeat{
+		WorkerID:       "worker",
+		ActiveJobs:     0,
+		MaxConcurrency: 4,
+		Timestamp:      start,
+	})
+	if err != nil {
+		t.Fatalf("heartbeat: %v", err)
+	}
+	if snapshot.ActiveJobs != 1 || snapshot.AvailableCapacity != 3 {
+		t.Fatalf("heartbeat erased reservation: %+v", snapshot)
+	}
+
+	// Once the worker reports the assignment, the heartbeat becomes the
+	// authoritative count rather than adding the reservation a second time.
+	snapshot, err = registry.RecordHeartbeat(Heartbeat{
+		WorkerID:       "worker",
+		ActiveJobs:     1,
+		MaxConcurrency: 4,
+		Timestamp:      start.Add(time.Second),
+	})
+	if err != nil {
+		t.Fatalf("second heartbeat: %v", err)
+	}
+	if snapshot.ActiveJobs != 1 || snapshot.AvailableCapacity != 3 {
+		t.Fatalf("reservation was double counted: %+v", snapshot)
+	}
+}
+
+func TestOlderJobReleaseDoesNotEraseNewReservation(t *testing.T) {
+	start := time.Now()
+	registry := newTestRegistry(t, ClockFunc(func() time.Time { return start }))
+	if _, err := registry.Register(Registration{WorkerID: "worker", MaxConcurrency: 3, SupportedJobTypes: []string{"sleep"}}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if _, err := registry.RecordHeartbeat(Heartbeat{
+		WorkerID:       "worker",
+		ActiveJobs:     1,
+		MaxConcurrency: 3,
+		Timestamp:      start,
+	}); err != nil {
+		t.Fatalf("initial heartbeat: %v", err)
+	}
+	if _, err := registry.TryReserve("worker"); err != nil {
+		t.Fatalf("reserve newer job: %v", err)
+	}
+
+	// The older reported job completes while the newer reservation has not yet
+	// appeared in a worker heartbeat. Release must not consume that reservation.
+	if _, err := registry.Release("worker"); err != nil {
+		t.Fatalf("release older job: %v", err)
+	}
+	snapshot, err := registry.RecordHeartbeat(Heartbeat{
+		WorkerID:       "worker",
+		ActiveJobs:     1, // stale report still containing the older job
+		MaxConcurrency: 3,
+		Timestamp:      start.Add(time.Second),
+	})
+	if err != nil {
+		t.Fatalf("stale heartbeat: %v", err)
+	}
+	if snapshot.ActiveJobs != 2 || snapshot.AvailableCapacity != 1 {
+		t.Fatalf("older release erased newer reservation: %+v", snapshot)
+	}
+
+	// The next heartbeat observes the new job and removes the conservative
+	// overlap with the completed old job.
+	snapshot, err = registry.RecordHeartbeat(Heartbeat{
+		WorkerID:       "worker",
+		ActiveJobs:     1,
+		MaxConcurrency: 3,
+		Timestamp:      start.Add(2 * time.Second),
+	})
+	if err != nil {
+		t.Fatalf("fresh heartbeat: %v", err)
+	}
+	if snapshot.ActiveJobs != 1 || snapshot.AvailableCapacity != 2 {
+		t.Fatalf("fresh heartbeat did not reconcile capacity: %+v", snapshot)
+	}
+}
+
+func TestRollbackReservationRemovesFreshCapacity(t *testing.T) {
+	start := time.Now()
+	registry := newTestRegistry(t, ClockFunc(func() time.Time { return start }))
+	if _, err := registry.Register(Registration{WorkerID: "worker", MaxConcurrency: 2, SupportedJobTypes: []string{"sleep"}}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if _, err := registry.TryReserve("worker"); err != nil {
+		t.Fatalf("reserve: %v", err)
+	}
+	snapshot, err := registry.RollbackReservation("worker")
+	if err != nil {
+		t.Fatalf("rollback: %v", err)
+	}
+	if snapshot.ActiveJobs != 0 || snapshot.AvailableCapacity != 2 || snapshot.JobsAssignedTotal != 0 {
+		t.Fatalf("rollback snapshot: %+v", snapshot)
+	}
+	snapshot, err = registry.RecordHeartbeat(Heartbeat{
+		WorkerID:       "worker",
+		ActiveJobs:     0,
+		MaxConcurrency: 2,
+		Timestamp:      start,
+	})
+	if err != nil {
+		t.Fatalf("heartbeat after rollback: %v", err)
+	}
+	if snapshot.ActiveJobs != 0 || snapshot.AvailableCapacity != 2 {
+		t.Fatalf("rolled-back reservation survived heartbeat: %+v", snapshot)
+	}
+	if _, err := registry.RollbackReservation("missing"); !errors.Is(err, ErrWorkerNotFound) {
+		t.Fatalf("missing rollback error = %v, want ErrWorkerNotFound", err)
+	}
+}
+
+func TestConcurrentReservationsNeverOversubscribe(t *testing.T) {
+	registry := newTestRegistry(t, &fakeClock{now: time.Now()})
+	const capacity = 8
+	if _, err := registry.Register(Registration{WorkerID: "worker", MaxConcurrency: capacity, SupportedJobTypes: []string{"sleep"}}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	const contenders = 256
+	start := make(chan struct{})
+	results := make(chan error, contenders)
+	var wg sync.WaitGroup
+	for i := 0; i < contenders; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			_, err := registry.TryReserve("worker")
+			if err == nil {
+				_, err = registry.ConfirmAssignment("worker")
+			}
+			results <- err
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+
+	succeeded := 0
+	for err := range results {
+		switch {
+		case err == nil:
+			succeeded++
+		case errors.Is(err, ErrWorkerAtCapacity):
+		default:
+			t.Fatalf("unexpected reservation error: %v", err)
+		}
+	}
+	if succeeded != capacity {
+		t.Fatalf("successful reservations = %d, want %d", succeeded, capacity)
+	}
+	snapshot, _ := registry.Get("worker")
+	if snapshot.ActiveJobs != capacity || snapshot.AvailableCapacity != 0 || snapshot.JobsAssignedTotal != capacity {
+		t.Fatalf("final capacity: %+v", snapshot)
 	}
 }
 

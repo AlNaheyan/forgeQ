@@ -27,6 +27,7 @@ func TestListWorkersEndpoint(t *testing.T) {
 			ActiveJobs:        1,
 			MaxConcurrency:    4,
 			AvailableCapacity: 3,
+			JobsAssignedTotal: 7,
 			SupportedJobTypes: []string{"sleep"},
 		}}})
 	request := httptest.NewRequest(http.MethodGet, "/v1/workers", nil)
@@ -36,7 +37,7 @@ func TestListWorkersEndpoint(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body=%s", response.Code, response.Body.String())
 	}
-	if body := response.Body.String(); !strings.Contains(body, `"worker_id":"worker-1"`) || !strings.Contains(body, `"available_capacity":3`) {
+	if body := response.Body.String(); !strings.Contains(body, `"worker_id":"worker-1"`) || !strings.Contains(body, `"available_capacity":3`) || !strings.Contains(body, `"jobs_assigned_total":7`) {
 		t.Fatalf("unexpected response: %s", body)
 	}
 }

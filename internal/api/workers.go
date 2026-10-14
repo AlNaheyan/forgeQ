@@ -17,6 +17,7 @@ type WorkerInfo struct {
 	SupportedJobTypes []string  `json:"supported_job_types"`
 	RegisteredAt      time.Time `json:"registered_at"`
 	LastHeartbeatAt   time.Time `json:"last_heartbeat_at"`
+	JobsAssignedTotal uint64    `json:"jobs_assigned_total"`
 }
 
 type WorkerProvider interface {
@@ -45,6 +46,7 @@ func (p *GRPCWorkerProvider) ListWorkers(ctx context.Context) ([]WorkerInfo, err
 			MaxConcurrency:    int(worker.GetMaxConcurrency()),
 			AvailableCapacity: int(worker.GetMaxConcurrency() - worker.GetActiveJobs()),
 			SupportedJobTypes: append([]string(nil), worker.GetSupportedJobTypes()...),
+			JobsAssignedTotal: worker.GetJobsAssignedTotal(),
 		}
 		if worker.GetRegisteredAt() != nil {
 			info.RegisteredAt = worker.GetRegisteredAt().AsTime()

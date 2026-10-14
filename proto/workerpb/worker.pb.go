@@ -307,6 +307,7 @@ type Worker struct {
 	SupportedJobTypes []string               `protobuf:"bytes,5,rep,name=supported_job_types,json=supportedJobTypes,proto3" json:"supported_job_types,omitempty"`
 	RegisteredAt      *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=registered_at,json=registeredAt,proto3" json:"registered_at,omitempty"`
 	LastHeartbeatAt   *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=last_heartbeat_at,json=lastHeartbeatAt,proto3" json:"last_heartbeat_at,omitempty"`
+	JobsAssignedTotal uint64                 `protobuf:"varint,8,opt,name=jobs_assigned_total,json=jobsAssignedTotal,proto3" json:"jobs_assigned_total,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -388,6 +389,13 @@ func (x *Worker) GetLastHeartbeatAt() *timestamppb.Timestamp {
 		return x.LastHeartbeatAt
 	}
 	return nil
+}
+
+func (x *Worker) GetJobsAssignedTotal() uint64 {
+	if x != nil {
+		return x.JobsAssignedTotal
+	}
+	return 0
 }
 
 type RegisterWorkerRequest struct {
@@ -1268,7 +1276,7 @@ const file_proto_worker_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xe4\x02\n" +
+	"updated_at\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\x94\x03\n" +
 	"\x06Worker\x12\x1b\n" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12:\n" +
 	"\x06health\x18\x02 \x01(\x0e2\".forgequeue.worker.v1.WorkerHealthR\x06health\x12\x1f\n" +
@@ -1277,7 +1285,8 @@ const file_proto_worker_proto_rawDesc = "" +
 	"\x0fmax_concurrency\x18\x04 \x01(\x05R\x0emaxConcurrency\x12.\n" +
 	"\x13supported_job_types\x18\x05 \x03(\tR\x11supportedJobTypes\x12?\n" +
 	"\rregistered_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\fregisteredAt\x12F\n" +
-	"\x11last_heartbeat_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\x0flastHeartbeatAt\"\x8d\x01\n" +
+	"\x11last_heartbeat_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\x0flastHeartbeatAt\x12.\n" +
+	"\x13jobs_assigned_total\x18\b \x01(\x04R\x11jobsAssignedTotal\"\x8d\x01\n" +
 	"\x15RegisterWorkerRequest\x12\x1b\n" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12'\n" +
 	"\x0fmax_concurrency\x18\x02 \x01(\x05R\x0emaxConcurrency\x12.\n" +

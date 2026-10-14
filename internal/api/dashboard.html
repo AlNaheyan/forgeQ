@@ -276,7 +276,7 @@
         bar.append(fill);
         const meta = document.createElement("div");
         meta.className = "worker-meta";
-        meta.textContent = `types: ${(worker.supported_job_types || []).join(", ")}\nheartbeat: ${relativeTime(worker.last_heartbeat_at)}`;
+        meta.textContent = `assigned: ${worker.jobs_assigned_total || 0}\ntypes: ${(worker.supported_job_types || []).join(", ")}\nheartbeat: ${relativeTime(worker.last_heartbeat_at)}`;
         meta.style.whiteSpace = "pre-line";
         card.append(top, capacity, bar, meta);
         root.append(card);

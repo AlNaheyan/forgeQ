@@ -73,6 +73,7 @@ services:
       RETRY_BASE_DELAY: 2s
       RETRY_MAX_DELAY: 60s
       RETRY_PROMOTION_INTERVAL: 250ms
+      SCHEDULER_STRATEGY: least_loaded
       LOG_LEVEL: info
     ports:
       - "9090:9090"
@@ -90,7 +91,6 @@ services:
     environment:
       APP_ENV: development
       COORDINATOR_ADDR: coordinator:9090
-      WORKER_ID: worker-1
       WORKER_CONCURRENCY: 4
       WORKER_JOB_TYPES: sleep,fail
       LEASE_RENEW_INTERVAL: 10s
