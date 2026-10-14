@@ -9,7 +9,7 @@ test:
 test-integration:
 	FORGEQUEUE_TEST_DATABASE_URL='postgres://forgequeue:forgequeue@localhost:55432/forgequeue?sslmode=disable' \
 	FORGEQUEUE_TEST_REDIS_ADDR='localhost:6379' \
-	go test -count=1 ./internal/api ./internal/coordinator ./internal/queue ./internal/repository/postgres ./internal/worker
+	go test -count=1 ./internal/api ./internal/coordinator ./internal/idempotency ./internal/queue ./internal/repository/postgres ./internal/worker
 
 fmt:
 	gofmt -w $$(find . -name '*.go' -not -path './vendor/*')

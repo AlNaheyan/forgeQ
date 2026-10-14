@@ -5,11 +5,11 @@ Go. It is being built to make coordination, failure recovery, at-least-once
 delivery, idempotency, backpressure, and observability explicit rather than
 hiding them behind a workflow framework.
 
-Waves 0 through 7 are complete: ForgeQueue has a durable job API, Redis-backed
+Waves 0 through 8 are complete: ForgeQueue has a durable job API, Redis-backed
 queues, PostgreSQL reconciliation, bounded-concurrency workers, and an explicit
 gRPC coordinator that owns worker registration, heartbeats, health, durable job
-leases, renewal, crash recovery, attempt tracking, retries, dead-lettering, and
-pluggable multi-worker scheduling.
+leases, renewal, crash recovery, attempt tracking, retries, dead-lettering,
+pluggable multi-worker scheduling, and durable execution-idempotency helpers.
 
 ## Planned architecture
 
@@ -27,6 +27,11 @@ Client --HTTP--> API ----------> PostgreSQL (durable truth)
 ForgeQueue will provide at-least-once execution. A job may run more than once
 when a worker completes its side effect but fails before acknowledging the
 result, so side-effecting handlers must be idempotent.
+
+For PostgreSQL-backed effects, `internal/idempotency.Executor` provides
+`ExecuteOnce` and transaction-aware `ExecuteOnceTx` guards. See
+[`docs/failure-semantics.md`](docs/failure-semantics.md) for the complete
+delivery contract and guidance for external side effects.
 
 ## Requirements
 
@@ -138,6 +143,7 @@ docker compose down
 - `cmd/`: service and tooling entry points
 - `internal/config/`: typed environment configuration
 - `internal/jobs/`: job model, state machine, and application service
+- `internal/idempotency/`: durable handler execution guards
 - `internal/repository/postgres/`: durable job storage
 - `internal/queue/`: Redis queue and PostgreSQL-to-Redis reconciliation
 - `internal/worker/`: worker runtime, concurrency control, and built-in handlers
