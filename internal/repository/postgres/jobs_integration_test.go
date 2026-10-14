@@ -83,6 +83,10 @@ func TestJobRepositoryLifecycleAndIdempotency(t *testing.T) {
 	if err != nil || got.Type != "sleep" {
 		t.Fatalf("get job: job=%+v err=%v", got, err)
 	}
+	queued, err := repository.ListQueuedJobs(ctx, 10)
+	if err != nil || len(queued) != 1 || queued[0].ID != first.ID {
+		t.Fatalf("list queued jobs: jobs=%+v err=%v", queued, err)
+	}
 
 	listed, cursor, err := repository.ListJobs(ctx, jobs.ListFilter{Status: jobs.StatusQueued, Limit: 1})
 	if err != nil {

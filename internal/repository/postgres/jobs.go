@@ -210,6 +210,38 @@ func (r *JobRepository) CancelJob(ctx context.Context, id string) (jobs.Job, err
 	return jobs.Job{}, fmt.Errorf("%w: cannot cancel job in %s state", jobs.ErrInvalidTransition, current.Status)
 }
 
+func (r *JobRepository) ListQueuedJobs(ctx context.Context, limit int) ([]jobs.Job, error) {
+	if limit <= 0 {
+		limit = 1000
+	}
+	if limit > 5000 {
+		limit = 5000
+	}
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT `+jobColumns+`
+		FROM jobs
+		WHERE status = $1 AND scheduled_at <= NOW()
+		ORDER BY priority DESC, created_at ASC
+		LIMIT $2`, jobs.StatusQueued, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list queued jobs: %w", err)
+	}
+	defer rows.Close()
+
+	result := make([]jobs.Job, 0, limit)
+	for rows.Next() {
+		job, err := scanJob(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan queued job: %w", err)
+		}
+		result = append(result, job)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate queued jobs: %w", err)
+	}
+	return result, nil
+}
+
 type scanner interface {
 	Scan(...any) error
 }

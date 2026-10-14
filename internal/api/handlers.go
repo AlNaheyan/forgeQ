@@ -60,7 +60,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		request.IdempotencyKey = headerKey
 	}
 
-	job, created, err := s.jobs.Submit(r.Context(), jobs.CreateInput{
+	result, err := s.jobs.Submit(r.Context(), jobs.CreateInput{
 		Type:           request.Type,
 		Payload:        request.Payload,
 		Priority:       request.Priority,
@@ -71,12 +71,18 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		s.writeServiceError(w, err)
 		return
 	}
+	if result.EnqueueError != nil {
+		s.logger.Warn("job persisted but enqueue failed; reconciliation will retry",
+			"job_id", result.Job.ID,
+			"error", result.EnqueueError,
+		)
+	}
 
 	status := http.StatusCreated
-	if !created {
+	if !result.Created {
 		status = http.StatusOK
 	}
-	writeJSON(w, status, job)
+	writeJSON(w, status, result.Job)
 }
 
 func (s *Server) getJob(w http.ResponseWriter, r *http.Request) {

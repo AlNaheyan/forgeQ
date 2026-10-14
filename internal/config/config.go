@@ -27,10 +27,11 @@ type Config struct {
 	DatabaseURL string
 	RedisAddr   string
 
-	HeartbeatInterval  time.Duration
-	WorkerTimeout      time.Duration
-	LeaseDuration      time.Duration
-	LeaseRenewInterval time.Duration
+	HeartbeatInterval      time.Duration
+	WorkerTimeout          time.Duration
+	LeaseDuration          time.Duration
+	LeaseRenewInterval     time.Duration
+	QueueReconcileInterval time.Duration
 
 	DefaultMaxAttempts int
 	MaxQueueDepth      int
@@ -99,6 +100,9 @@ func load(service string, lookup lookupFunc) (Config, error) {
 		return Config{}, err
 	}
 	if cfg.LeaseRenewInterval, err = durationValue(lookup, "LEASE_RENEW_INTERVAL", 10*time.Second); err != nil {
+		return Config{}, err
+	}
+	if cfg.QueueReconcileInterval, err = durationValue(lookup, "QUEUE_RECONCILE_INTERVAL", 10*time.Second); err != nil {
 		return Config{}, err
 	}
 

@@ -5,8 +5,9 @@ Go. It is being built to make coordination, failure recovery, at-least-once
 delivery, idempotency, backpressure, and observability explicit rather than
 hiding them behind a workflow framework.
 
-The project is under active development. Waves 0 and 1 establish the shared
-service foundation, local PostgreSQL/Redis dependencies, and durable job API.
+The project is under active development. Waves 0 through 2 establish the shared
+service foundation, durable job API, Redis-backed ready/delayed queues, and
+automatic reconciliation from PostgreSQL.
 
 ## Planned architecture
 
@@ -76,6 +77,12 @@ Run the test suite:
 go test ./...
 ```
 
+Run the PostgreSQL and Redis integration tests while the dependencies are up:
+
+```bash
+make test-integration
+```
+
 Build every command:
 
 ```bash
@@ -94,6 +101,7 @@ docker compose down
 - `internal/config/`: typed environment configuration
 - `internal/jobs/`: job model, state machine, and application service
 - `internal/repository/postgres/`: durable job storage
+- `internal/queue/`: Redis queue and PostgreSQL-to-Redis reconciliation
 - `internal/api/`: HTTP transport
 - `internal/telemetry/`: shared structured logging and, later, metrics
 - `migrations/`: embedded, ordered PostgreSQL migrations

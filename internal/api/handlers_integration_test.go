@@ -9,13 +9,18 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"testing"
+	"time"
 
 	"forgequeue/internal/api"
 	"forgequeue/internal/jobs"
 	"forgequeue/internal/platform"
+	jobqueue "forgequeue/internal/queue"
 	postgresrepository "forgequeue/internal/repository/postgres"
 	"forgequeue/migrations"
+
+	"github.com/redis/go-redis/v9"
 )
 
 func TestJobHTTPFlow(t *testing.T) {
@@ -47,13 +52,29 @@ func TestJobHTTPFlow(t *testing.T) {
 	}
 
 	repository := postgresrepository.NewJobRepository(db)
-	service := jobs.NewService(repository, 3)
+	var enqueuer jobs.Enqueuer
+	var redisQueue *jobqueue.RedisQueue
+	if redisAddress := os.Getenv("FORGEQUEUE_TEST_REDIS_ADDR"); redisAddress != "" {
+		redisClient := redis.NewClient(&redis.Options{Addr: redisAddress})
+		defer redisClient.Close()
+		prefix := "forgequeue:http-test:" + strconv.FormatInt(time.Now().UnixNano(), 10)
+		defer redisClient.Del(ctx, prefix+":ready", prefix+":delayed")
+		redisQueue = jobqueue.NewRedisQueue(redisClient, prefix)
+		enqueuer = redisQueue
+	}
+	service := jobs.NewService(repository, enqueuer, 3)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	handler := api.NewServer(service, nil, logger).Routes()
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
 	jobID := submitJob(t, server.URL, http.StatusCreated)
+	if redisQueue != nil {
+		present, err := redisQueue.Contains(ctx, jobID)
+		if err != nil || !present {
+			t.Fatalf("submitted job missing from Redis queue: present=%v err=%v", present, err)
+		}
+	}
 	duplicateID := submitJob(t, server.URL, http.StatusOK)
 	if jobID != duplicateID {
 		t.Fatalf("duplicate request returned %q, want %q", duplicateID, jobID)

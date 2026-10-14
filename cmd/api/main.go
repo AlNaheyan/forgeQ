@@ -13,6 +13,7 @@ import (
 	"forgequeue/internal/config"
 	"forgequeue/internal/jobs"
 	"forgequeue/internal/platform"
+	"forgequeue/internal/queue"
 	postgresrepository "forgequeue/internal/repository/postgres"
 	"forgequeue/internal/telemetry"
 	"forgequeue/migrations"
@@ -42,16 +43,27 @@ func run() error {
 		return err
 	}
 	defer db.Close()
+	redisClient, err := platform.OpenRedis(ctx, cfg.RedisAddr)
+	if err != nil {
+		return err
+	}
+	defer redisClient.Close()
 	if err := migrations.Up(ctx, db); err != nil {
 		return fmt.Errorf("apply migrations: %w", err)
 	}
 
 	repository := postgresrepository.NewJobRepository(db)
-	service := jobs.NewService(repository, cfg.DefaultMaxAttempts)
+	jobQueue := queue.NewRedisQueue(redisClient, "forgequeue")
+	service := jobs.NewService(repository, jobQueue, cfg.DefaultMaxAttempts)
+	reconciler := queue.NewReconciler(repository, jobQueue, logger)
+	go reconciler.Run(ctx, cfg.QueueReconcileInterval)
 	handler := api.NewServer(service, func(r *http.Request) error {
 		readyCtx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
-		return db.PingContext(readyCtx)
+		if err := db.PingContext(readyCtx); err != nil {
+			return err
+		}
+		return redisClient.Ping(readyCtx).Err()
 	}, logger).Routes()
 
 	server := &http.Server{

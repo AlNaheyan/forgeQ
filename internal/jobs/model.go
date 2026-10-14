@@ -98,6 +98,9 @@ func ValidateInput(input CreateInput) error {
 	if input.MaxAttempts < 1 || input.MaxAttempts > 100 {
 		return fmt.Errorf("%w: max_attempts must be between 1 and 100", ErrInvalidJob)
 	}
+	if input.Priority < -100 || input.Priority > 100 {
+		return fmt.Errorf("%w: priority must be between -100 and 100", ErrInvalidJob)
+	}
 	if len(input.IdempotencyKey) > 255 {
 		return fmt.Errorf("%w: idempotency_key must not exceed 255 characters", ErrInvalidJob)
 	}

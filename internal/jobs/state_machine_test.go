@@ -49,4 +49,8 @@ func TestNewValidatesInputAndAppliesInitialState(t *testing.T) {
 	if !errors.Is(err, ErrInvalidJob) {
 		t.Fatalf("expected ErrInvalidJob, got %v", err)
 	}
+	_, err = New(CreateInput{Type: "sleep", Payload: json.RawMessage(`{}`), Priority: 101, MaxAttempts: 3}, now)
+	if !errors.Is(err, ErrInvalidJob) {
+		t.Fatalf("expected priority validation error, got %v", err)
+	}
 }
