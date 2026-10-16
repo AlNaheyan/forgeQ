@@ -1,0 +1,1 @@
+{"action":"restart_service","target":"redis","started_at":"2026-10-16T06:01:48.038982Z","ended_at":"2026-10-16T06:01:48.609594Z","duration":"570.612ms"}

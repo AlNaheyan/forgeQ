@@ -139,6 +139,11 @@ The sustained and overload workloads live in `load/`. See
 [`docs/benchmarks.md`](docs/benchmarks.md) for k6 commands, measurement rules,
 raw evidence links, measured results, and limitations.
 
+Wave 12 failure-injection commands are available through `make chaos-worker-crash`,
+`make chaos-redis-restart`, and `make chaos-coordinator-restart`. They write timestamped evidence under
+`artifacts/chaos/`; see [`docs/chaos-results.md`](docs/chaos-results.md) before
+running experiments against the local Compose stack.
+
 Run the test suite:
 
 ```bash

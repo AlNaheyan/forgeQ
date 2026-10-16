@@ -1,0 +1,2 @@
+{"action":"kill_worker","target":"1bac79a5fb2b","container":"deployments-worker-5","started_at":"2026-10-16T05:59:39.918467Z","ended_at":"2026-10-16T05:59:40.014433Z","duration":"95.966ms"}
+{"action":"kill_worker","target":"f556c669fb8d","container":"deployments-worker-6","started_at":"2026-10-16T05:59:40.014604Z","ended_at":"2026-10-16T05:59:40.113436Z","duration":"98.832ms"}
