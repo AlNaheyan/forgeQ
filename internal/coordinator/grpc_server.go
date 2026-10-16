@@ -11,6 +11,7 @@ import (
 
 	"forgequeue/internal/jobs"
 	"forgequeue/internal/queue"
+	"forgequeue/internal/telemetry"
 	"forgequeue/proto/workerpb"
 
 	"google.golang.org/grpc/codes"
@@ -41,6 +42,7 @@ type ServerConfig struct {
 	RetryPolicy       RetryPolicy
 	Scheduler         Scheduler
 	Logger            *slog.Logger
+	Metrics           *telemetry.Metrics
 }
 
 // GRPCServer implements the worker control plane. PostgreSQL leases are the
@@ -56,6 +58,7 @@ type GRPCServer struct {
 	retryPolicy       RetryPolicy
 	scheduler         Scheduler
 	logger            *slog.Logger
+	metrics           *telemetry.Metrics
 	offersMu          sync.Mutex
 	offers            map[string]string
 }
@@ -82,6 +85,7 @@ func NewGRPCServer(config ServerConfig, registry *Registry, repository jobReposi
 		retryPolicy:       config.RetryPolicy,
 		scheduler:         config.Scheduler,
 		logger:            config.Logger,
+		metrics:           config.Metrics,
 		offers:            make(map[string]string),
 	}, nil
 }
@@ -98,6 +102,7 @@ func (s *GRPCServer) RegisterWorker(_ context.Context, request *workerpb.Registe
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
+	s.observeWorkers()
 	return &workerpb.RegisterWorkerResponse{
 		HeartbeatInterval: durationpb.New(s.heartbeatInterval),
 		LeaseDuration:     durationpb.New(s.leaseDuration),
@@ -124,6 +129,7 @@ func (s *GRPCServer) Heartbeat(_ context.Context, request *workerpb.HeartbeatReq
 		}
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
+	s.observeWorkers()
 	return &workerpb.HeartbeatResponse{
 		Accepted:   true,
 		Health:     healthToProto(snapshot.Health),
@@ -149,6 +155,9 @@ func (s *GRPCServer) ClaimJob(ctx context.Context, request *workerpb.ClaimJobReq
 	depth, err := s.queue.Depth(ctx)
 	if err != nil {
 		return nil, status.Error(codes.Unavailable, fmt.Sprintf("read queue depth: %v", err))
+	}
+	if s.metrics != nil {
+		s.metrics.QueueDepth.Set(float64(depth))
 	}
 	if depth > 1000 {
 		depth = 1000
@@ -212,6 +221,10 @@ func (s *GRPCServer) ClaimJob(ctx context.Context, request *workerpb.ClaimJobReq
 				"error", err,
 			)
 		}
+		if s.metrics != nil {
+			s.metrics.JobsAssigned.WithLabelValues(worker.WorkerID).Inc()
+		}
+		s.observeWorkers()
 		return &workerpb.ClaimJobResponse{
 			Job:           jobToProto(claimed),
 			LeaseDuration: durationpb.New(s.leaseDuration),
@@ -229,6 +242,13 @@ func (s *GRPCServer) StartJob(ctx context.Context, request *workerpb.StartJobReq
 	if err != nil {
 		return nil, repositoryStatusError(err)
 	}
+	if s.metrics != nil {
+		s.metrics.JobsStarted.Inc()
+		s.metrics.JobAttempts.Observe(float64(job.AttemptCount))
+		if wait := time.Since(job.ScheduledAt); wait >= 0 {
+			s.metrics.JobQueueWait.Observe(wait.Seconds())
+		}
+	}
 	return &workerpb.StartJobResponse{Job: jobToProto(job)}, nil
 }
 
@@ -239,11 +259,17 @@ func (s *GRPCServer) CompleteJob(ctx context.Context, request *workerpb.Complete
 	if len(request.GetResultJson()) > 0 && !json.Valid(request.GetResultJson()) {
 		return nil, status.Error(codes.InvalidArgument, "result_json must contain valid JSON")
 	}
+	current, _ := s.repository.GetJob(ctx, request.GetJobId())
 	job, err := s.repository.SucceedAttempt(ctx, request.GetJobId(), request.GetWorkerId(), request.GetResultJson())
 	if err != nil {
 		return nil, repositoryStatusError(err)
 	}
 	_, _ = s.registry.Release(request.GetWorkerId())
+	if s.metrics != nil {
+		s.metrics.JobsCompleted.Inc()
+		s.observeJobDuration(current.UpdatedAt)
+	}
+	s.observeWorkers()
 	return &workerpb.CompleteJobResponse{Job: jobToProto(job)}, nil
 }
 
@@ -264,6 +290,17 @@ func (s *GRPCServer) FailJob(ctx context.Context, request *workerpb.FailJobReque
 		return nil, repositoryStatusError(err)
 	}
 	_, _ = s.registry.Release(request.GetWorkerId())
+	if s.metrics != nil {
+		s.metrics.JobsFailed.Inc()
+		s.observeJobDuration(current.UpdatedAt)
+		switch job.Status {
+		case jobs.StatusRetryWait:
+			s.metrics.JobsRetried.Inc()
+		case jobs.StatusDeadLetter:
+			s.metrics.JobsDeadLetter.Inc()
+		}
+	}
+	s.observeWorkers()
 	if job.Status == jobs.StatusRetryWait {
 		if err := s.queue.ScheduleRetry(ctx, job.ID, job.ScheduledAt); err != nil {
 			s.logger.Warn("retry persisted but delayed enqueue failed; promoter will recover from PostgreSQL",
@@ -299,6 +336,38 @@ func (s *GRPCServer) deleteOffer(jobID string) {
 	s.offersMu.Lock()
 	delete(s.offers, jobID)
 	s.offersMu.Unlock()
+}
+
+func (s *GRPCServer) observeWorkers() {
+	if s.metrics == nil {
+		return
+	}
+	workers := s.registry.List()
+	healthy := 0
+	unhealthy := 0
+	active := 0
+	for _, worker := range workers {
+		active += worker.ActiveJobs
+		if worker.Health == HealthHealthy {
+			healthy++
+		} else {
+			unhealthy++
+		}
+	}
+	s.metrics.WorkersRegistered.Set(float64(len(workers)))
+	s.metrics.WorkersHealthy.Set(float64(healthy))
+	s.metrics.WorkersUnhealthy.Set(float64(unhealthy))
+	s.metrics.ActiveJobs.Set(float64(active))
+}
+
+// RefreshMetrics updates time-dependent registry gauges even when a failed
+// worker is no longer sending heartbeats.
+func (s *GRPCServer) RefreshMetrics() { s.observeWorkers() }
+
+func (s *GRPCServer) observeJobDuration(startedAt time.Time) {
+	if duration := time.Since(startedAt); !startedAt.IsZero() && duration >= 0 {
+		s.metrics.JobDuration.Observe(duration.Seconds())
+	}
 }
 
 func (s *GRPCServer) RenewLease(ctx context.Context, request *workerpb.RenewLeaseRequest) (*workerpb.RenewLeaseResponse, error) {

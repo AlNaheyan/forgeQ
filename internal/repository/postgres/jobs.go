@@ -62,7 +62,8 @@ func (r *JobRepository) CreateJob(ctx context.Context, job jobs.Job) (jobs.Job, 
 			if rollbackErr := tx.Rollback(); rollbackErr != nil {
 				return jobs.Job{}, false, fmt.Errorf("rollback duplicate job: %w", rollbackErr)
 			}
-			return r.getByIdempotencyKey(ctx, job.IdempotencyKey)
+			existing, getErr := r.GetJobByIdempotencyKey(ctx, job.IdempotencyKey)
+			return existing, false, getErr
 		}
 		if err != nil {
 			return jobs.Job{}, false, fmt.Errorf("insert idempotency key: %w", err)
@@ -75,17 +76,20 @@ func (r *JobRepository) CreateJob(ctx context.Context, job jobs.Job) (jobs.Job, 
 	return job, true, nil
 }
 
-func (r *JobRepository) getByIdempotencyKey(ctx context.Context, key string) (jobs.Job, bool, error) {
+func (r *JobRepository) GetJobByIdempotencyKey(ctx context.Context, key string) (jobs.Job, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT `+joinedJobColumns+`
 		FROM jobs j
 		JOIN idempotency_keys i ON i.job_id = j.id
 		WHERE i.key = $1`, key)
 	job, err := scanJob(row)
-	if err != nil {
-		return jobs.Job{}, false, fmt.Errorf("get job by idempotency key: %w", err)
+	if errors.Is(err, sql.ErrNoRows) {
+		return jobs.Job{}, jobs.ErrNotFound
 	}
-	return job, false, nil
+	if err != nil {
+		return jobs.Job{}, fmt.Errorf("get job by idempotency key: %w", err)
+	}
+	return job, nil
 }
 
 func (r *JobRepository) GetJob(ctx context.Context, id string) (jobs.Job, error) {

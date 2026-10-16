@@ -1,0 +1,170 @@
+{
+    "metrics": {
+        "vus_max": {
+            "value": 64,
+            "min": 64,
+            "max": 64
+        },
+        "checks": {
+            "passes": 1000,
+            "fails": 0,
+            "thresholds": {
+                "rate>0.99": false
+            },
+            "value": 1
+        },
+        "data_sent": {
+            "count": 250977,
+            "rate": 124780.29117711163
+        },
+        "iterations": {
+            "count": 1001,
+            "rate": 497.67537052514274
+        },
+        "http_req_duration": {
+            "med": 1.383,
+            "max": 136.192708,
+            "p(90)": 2.782417,
+            "p(95)": 45.481,
+            "avg": 5.987165520479533,
+            "min": 0.632375
+        },
+        "http_reqs": {
+            "count": 1001,
+            "rate": 497.67537052514274
+        },
+        "data_received": {
+            "count": 511828,
+            "rate": 254469.71982531744
+        },
+        "forgequeue_load_submitted": {
+            "count": 1000,
+            "rate": 497.17819233280994,
+            "thresholds": {
+                "count==1000": false
+            }
+        },
+        "http_req_blocked": {
+            "p(90)": 0.003,
+            "p(95)": 2.609834,
+            "avg": 0.34292330269730303,
+            "min": 0.000625,
+            "med": 0.0015,
+            "max": 20.038458
+        },
+        "vus": {
+            "min": 1,
+            "max": 1,
+            "value": 1
+        },
+        "http_req_duration{endpoint:create_job}": {
+            "min": 0.632375,
+            "med": 1.382979,
+            "max": 136.192708,
+            "p(90)": 2.7758911000000004,
+            "p(95)": 45.48839374999999,
+            "avg": 5.989158811000013,
+            "thresholds": {
+                "p(95)<1000": false,
+                "p(99)<2000": false
+            }
+        },
+        "http_req_waiting": {
+            "med": 1.359167,
+            "max": 135.974292,
+            "p(90)": 2.749375,
+            "p(95)": 43.740541,
+            "avg": 5.942916050949048,
+            "min": 0.62375
+        },
+        "http_req_receiving": {
+            "max": 5.31825,
+            "p(90)": 0.048292,
+            "p(95)": 0.071416,
+            "avg": 0.031103016983016957,
+            "min": 0.004042,
+            "med": 0.013458
+        },
+        "iteration_duration": {
+            "avg": 6.408547408591413,
+            "min": 0.009625,
+            "med": 1.442041,
+            "max": 139.563208,
+            "p(90)": 2.899875,
+            "p(95)": 50.065166
+        },
+        "forgequeue_load_rejected": {
+            "count": 0,
+            "rate": 0,
+            "thresholds": {
+                "count==0": false
+            }
+        },
+        "http_req_duration{expected_response:true}": {
+            "max": 136.192708,
+            "p(90)": 2.782417,
+            "p(95)": 45.481,
+            "avg": 5.987165520479533,
+            "min": 0.632375,
+            "med": 1.383
+        },
+        "http_req_connecting": {
+            "p(95)": 2.060292,
+            "avg": 0.3172361358641358,
+            "min": 0,
+            "med": 0,
+            "max": 19.926917,
+            "p(90)": 0
+        },
+        "forgequeue_load_unexpected": {
+            "count": 0,
+            "rate": 0,
+            "thresholds": {
+                "count==0": false
+            }
+        },
+        "http_req_sending": {
+            "avg": 0.01314645254745257,
+            "min": 0.0025,
+            "med": 0.007375,
+            "max": 1.042875,
+            "p(90)": 0.019125,
+            "p(95)": 0.031417
+        },
+        "http_req_failed": {
+            "passes": 0,
+            "fails": 1001,
+            "value": 0
+        },
+        "dropped_iterations": {
+            "count": 0,
+            "rate": 0,
+            "thresholds": {
+                "count==0": false
+            }
+        },
+        "http_req_tls_handshaking": {
+            "min": 0,
+            "med": 0,
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0
+        }
+    },
+    "root_group": {
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+                "job was created": {
+                    "name": "job was created",
+                    "path": "::job was created",
+                    "id": "91c7a6ea9252160fb0c633dda8050c36",
+                    "passes": 1000,
+                    "fails": 0
+                }
+            }
+    }
+}

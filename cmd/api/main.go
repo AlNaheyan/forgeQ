@@ -39,6 +39,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("initialize logger: %w", err)
 	}
+	metrics := telemetry.NewMetrics()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -63,7 +64,8 @@ func run() error {
 
 	repository := postgresrepository.NewJobRepository(db)
 	jobQueue := queue.NewRedisQueue(redisClient, "forgequeue")
-	service := jobs.NewService(repository, jobQueue, cfg.DefaultMaxAttempts)
+	service := jobs.NewService(repository, jobQueue, cfg.DefaultMaxAttempts).
+		WithBackpressure(jobQueue, cfg.MaxQueueDepth, metrics)
 	reconciler := queue.NewReconciler(repository, jobQueue, logger)
 	go reconciler.Run(ctx, cfg.QueueReconcileInterval)
 	handler := api.NewServer(service, func(r *http.Request) error {
@@ -75,6 +77,7 @@ func run() error {
 		return redisClient.Ping(readyCtx).Err()
 	}, logger).
 		WithWorkerProvider(api.NewGRPCWorkerProvider(workerpb.NewWorkerCoordinatorClient(coordinatorConnection))).
+		WithMetrics(metrics).
 		Routes()
 
 	server := &http.Server{

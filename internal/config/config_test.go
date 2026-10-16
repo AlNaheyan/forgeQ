@@ -18,8 +18,14 @@ func TestLoadUsesDevelopmentDefaults(t *testing.T) {
 	if cfg.HTTPPort != 8080 || cfg.GRPCPort != 9090 {
 		t.Fatalf("unexpected ports: HTTP=%d gRPC=%d", cfg.HTTPPort, cfg.GRPCPort)
 	}
+	if cfg.MetricsPort != 9101 {
+		t.Fatalf("unexpected metrics port: %d", cfg.MetricsPort)
+	}
 	if cfg.HeartbeatInterval != 5*time.Second || cfg.WorkerConcurrency != 4 || cfg.LeaseScanInterval != time.Second || cfg.RetryBaseDelay != 2*time.Second || cfg.RetryMaxDelay != time.Minute {
 		t.Fatalf("unexpected defaults: %+v", cfg)
+	}
+	if cfg.MaxQueueDepth != 100_000 {
+		t.Fatalf("unexpected max queue depth: %d", cfg.MaxQueueDepth)
 	}
 	if len(cfg.WorkerJobTypes) != 2 || cfg.WorkerJobTypes[0] != "sleep" || cfg.WorkerPollInterval != 250*time.Millisecond {
 		t.Fatalf("unexpected worker runtime defaults: types=%v poll=%s", cfg.WorkerJobTypes, cfg.WorkerPollInterval)
@@ -38,6 +44,8 @@ func TestLoadUsesDevelopmentDefaults(t *testing.T) {
 func TestLoadReadsOverrides(t *testing.T) {
 	cfg, err := load("worker", mapLookup(map[string]string{
 		"HTTP_PORT":           "8181",
+		"METRICS_PORT":        "9191",
+		"MAX_QUEUE_DEPTH":     "42",
 		"WORKER_CONCURRENCY":  "12",
 		"WORKER_ID":           "worker-test",
 		"WORKER_JOB_TYPES":    "sleep, fail, sleep",
@@ -52,7 +60,7 @@ func TestLoadReadsOverrides(t *testing.T) {
 		t.Fatalf("load overrides: %v", err)
 	}
 
-	if cfg.HTTPPort != 8181 || cfg.WorkerConcurrency != 12 || cfg.WorkerID != "worker-test" || len(cfg.WorkerJobTypes) != 2 || cfg.LeaseDuration != 45*time.Second || cfg.LeaseScanInterval != 2*time.Second || cfg.RetryBaseDelay != 3*time.Second || cfg.RetryMaxDelay != 20*time.Second || cfg.SchedulerStrategy != SchedulerWeightedCapacity || cfg.LogLevel != "debug" {
+	if cfg.HTTPPort != 8181 || cfg.MetricsPort != 9191 || cfg.MaxQueueDepth != 42 || cfg.WorkerConcurrency != 12 || cfg.WorkerID != "worker-test" || len(cfg.WorkerJobTypes) != 2 || cfg.LeaseDuration != 45*time.Second || cfg.LeaseScanInterval != 2*time.Second || cfg.RetryBaseDelay != 3*time.Second || cfg.RetryMaxDelay != 20*time.Second || cfg.SchedulerStrategy != SchedulerWeightedCapacity || cfg.LogLevel != "debug" {
 		t.Fatalf("overrides were not applied: %+v", cfg)
 	}
 }

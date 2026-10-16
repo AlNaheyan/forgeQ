@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"forgequeue/internal/jobs"
+	"forgequeue/internal/telemetry"
 )
 
 const defaultRecoveryBatchSize = 100
@@ -29,6 +30,12 @@ type RecoveryScanner struct {
 	queue      recoveryQueue
 	logger     *slog.Logger
 	batchSize  int
+	metrics    *telemetry.Metrics
+}
+
+func (s *RecoveryScanner) WithMetrics(metrics *telemetry.Metrics) *RecoveryScanner {
+	s.metrics = metrics
+	return s
 }
 
 func NewRecoveryScanner(
@@ -57,6 +64,12 @@ func (s *RecoveryScanner) RecoverOnce(ctx context.Context) (int, error) {
 	expired, err := s.repository.RecoverExpiredAttempts(ctx, s.batchSize)
 	if err != nil {
 		return 0, fmt.Errorf("requeue expired leases: %w", err)
+	}
+	if s.metrics != nil && len(expired) > 0 {
+		count := float64(len(expired))
+		s.metrics.LeaseExpirations.Add(count)
+		s.metrics.JobsFailed.Add(count)
+		s.metrics.JobsRetried.Add(count)
 	}
 
 	recovered := 0

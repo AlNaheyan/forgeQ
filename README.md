@@ -5,11 +5,14 @@ Go. It is being built to make coordination, failure recovery, at-least-once
 delivery, idempotency, backpressure, and observability explicit rather than
 hiding them behind a workflow framework.
 
-Waves 0 through 8 are complete: ForgeQueue has a durable job API, Redis-backed
+Waves 0 through 11 are complete: ForgeQueue has a durable job API, Redis-backed
 queues, PostgreSQL reconciliation, bounded-concurrency workers, and an explicit
 gRPC coordinator that owns worker registration, heartbeats, health, durable job
 leases, renewal, crash recovery, attempt tracking, retries, dead-lettering,
-pluggable multi-worker scheduling, and durable execution-idempotency helpers.
+pluggable multi-worker scheduling, durable execution-idempotency helpers,
+backpressure, Prometheus/Grafana observability, and reproducible k6 workloads.
+The Wave 11 report includes measured 10k, 50k, and 100k baselines plus a
+100k-job comparison across two, four, and eight workers.
 
 ## Planned architecture
 
@@ -68,11 +71,28 @@ Workers receive unique container-hostname IDs automatically. Select
 `least_loaded`, `round_robin`, or `weighted_capacity` with the coordinator's
 `SCHEDULER_STRATEGY` environment variable.
 
+For long-lived deployments, set `WORKER_ID` from a stable, unique instance
+identity (for example, a StatefulSet pod name). Automatically generated IDs
+change on restart, so repeatedly restarting workers can create stale
+`worker_id` label series in Prometheus. Do not give concurrent workers the
+same explicit ID.
+
 Open the built-in operator dashboard at
 [http://localhost:8080/dashboard](http://localhost:8080/dashboard). It can
 submit jobs, track their state, inspect payloads and results, cancel queued
 work, and show live worker health, capacity, and assignment totals. It is
 embedded in the Go API, so there is no separate frontend build or service.
+
+Operational telemetry is available through
+[Prometheus](http://localhost:9091) and the provisioned
+[Grafana dashboard](http://localhost:3000/d/forgequeue-overview/forgequeue-overview).
+The API also exposes its Prometheus data directly at
+[http://localhost:8080/metrics](http://localhost:8080/metrics).
+
+New submissions are rejected with HTTP `429` and `Retry-After` when the ready
+queue reaches `MAX_QUEUE_DEPTH`. The in-flight reservation makes this bound
+safe for concurrent requests within one API process; deployments with multiple
+API replicas should use a shared atomic admission mechanism.
 
 PostgreSQL is exposed on port `55432` to avoid colliding with a system database;
 Redis is exposed on `6379`.
@@ -113,6 +133,11 @@ Available HTTP endpoints:
 - `GET /v1/workers`
 - `GET /healthz`
 - `GET /readyz`
+- `GET /metrics`
+
+The sustained and overload workloads live in `load/`. See
+[`docs/benchmarks.md`](docs/benchmarks.md) for k6 commands, measurement rules,
+raw evidence links, measured results, and limitations.
 
 Run the test suite:
 
@@ -150,7 +175,10 @@ docker compose down
 - `internal/coordinator/`: worker registry, health state, and gRPC control plane
 - `proto/`: coordinator protocol and generated Go stubs
 - `internal/api/`: HTTP transport
-- `internal/telemetry/`: shared structured logging and, later, metrics
+- `internal/telemetry/`: structured logging, request IDs, and Prometheus metrics
+- `load/`: k6 sustained-load and overload workloads
+- `deployments/grafana/`: provisioned operations dashboard
+- `deployments/prometheus/`: local scrape configuration
 - `migrations/`: embedded, ordered PostgreSQL migrations
 - `deployments/`: local deployment definitions
 - `docs/`: build specification and architecture documentation

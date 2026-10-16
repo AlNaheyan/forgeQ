@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"os"
 	"os/signal"
@@ -39,6 +41,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("initialize logger: %w", err)
 	}
+	metrics := telemetry.NewMetrics()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -80,14 +83,20 @@ func run() error {
 		),
 		Scheduler: scheduler,
 		Logger:    logger,
+		Metrics:   metrics,
 	}, registry, repository, jobQueue)
 	if err != nil {
 		return fmt.Errorf("initialize coordinator service: %w", err)
 	}
-	recoveryScanner := coordinator.NewRecoveryScanner(repository, jobQueue, logger, 100)
+	recoveryScanner := coordinator.NewRecoveryScanner(repository, jobQueue, logger, 100).WithMetrics(metrics)
 	go recoveryScanner.Run(ctx, cfg.LeaseScanInterval)
 	retryPromoter := coordinator.NewRetryPromoter(repository, jobQueue, logger, 100)
 	go retryPromoter.Run(ctx, cfg.RetryPromotionInterval)
+	go observeCoordinatorState(ctx, jobQueue, coordinatorServer, metrics, logger)
+	metricsErrors := make(chan error, 1)
+	go func() {
+		metricsErrors <- telemetry.ServeMetrics(ctx, fmt.Sprintf(":%d", cfg.MetricsPort), metrics, logger)
+	}()
 
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.GRPCPort))
 	if err != nil {
@@ -122,6 +131,44 @@ func run() error {
 		return nil
 	case err := <-serveErrors:
 		return fmt.Errorf("serve coordinator gRPC: %w", err)
+	case err := <-metricsErrors:
+		if err == nil {
+			return nil
+		}
+		return fmt.Errorf("serve coordinator metrics: %w", err)
+	}
+}
+
+type queueDepthReader interface {
+	Depth(context.Context) (int64, error)
+}
+
+type metricsRefresher interface {
+	RefreshMetrics()
+}
+
+func observeCoordinatorState(ctx context.Context, queue queueDepthReader, refresher metricsRefresher, metrics *telemetry.Metrics, logger *slog.Logger) {
+	observe := func() {
+		refresher.RefreshMetrics()
+		depth, err := queue.Depth(ctx)
+		if err != nil {
+			if !errors.Is(err, context.Canceled) {
+				logger.Warn("queue depth observation failed", "error", err)
+			}
+			return
+		}
+		metrics.QueueDepth.Set(float64(depth))
+	}
+	observe()
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			observe()
+		}
 	}
 }
 

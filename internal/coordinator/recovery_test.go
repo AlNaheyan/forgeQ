@@ -10,6 +10,10 @@ import (
 	"time"
 
 	"forgequeue/internal/jobs"
+	"forgequeue/internal/telemetry"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 type recoveryRepositoryStub struct {
@@ -59,7 +63,8 @@ func TestRecoveryScannerRecoverOnceEnqueuesEveryExpiredJob(t *testing.T) {
 		{ID: "second", Priority: -2, CreatedAt: now.Add(time.Second)},
 	}}
 	readyQueue := &recoveryQueueStub{}
-	scanner := NewRecoveryScanner(repository, readyQueue, recoveryTestLogger(), 37)
+	metrics := telemetry.NewMetrics()
+	scanner := NewRecoveryScanner(repository, readyQueue, recoveryTestLogger(), 37).WithMetrics(metrics)
 
 	recovered, err := scanner.RecoverOnce(context.Background())
 	if err != nil {
@@ -76,6 +81,15 @@ func TestRecoveryScannerRecoverOnceEnqueuesEveryExpiredJob(t *testing.T) {
 	}
 	if readyQueue.jobs[0].ID != "first" || readyQueue.jobs[0].Priority != 8 || !readyQueue.jobs[0].CreatedAt.Equal(now) {
 		t.Fatalf("first enqueued job = %+v", readyQueue.jobs[0])
+	}
+	for name, collector := range map[string]prometheus.Collector{
+		"lease expirations": metrics.LeaseExpirations,
+		"failed jobs":       metrics.JobsFailed,
+		"retried jobs":      metrics.JobsRetried,
+	} {
+		if got := testutil.ToFloat64(collector); got != 2 {
+			t.Errorf("%s metric = %v, want 2", name, got)
+		}
 	}
 }
 

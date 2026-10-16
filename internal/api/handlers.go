@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"forgequeue/internal/jobs"
+	"forgequeue/internal/telemetry"
 )
 
 const maxRequestBody = 1 << 20
@@ -20,10 +21,16 @@ type Server struct {
 	ready   func(*http.Request) error
 	logger  *slog.Logger
 	workers WorkerProvider
+	metrics *telemetry.Metrics
 }
 
 func (s *Server) WithWorkerProvider(provider WorkerProvider) *Server {
 	s.workers = provider
+	return s
+}
+
+func (s *Server) WithMetrics(metrics *telemetry.Metrics) *Server {
+	s.metrics = metrics
 	return s
 }
 
@@ -43,7 +50,10 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /v1/workers", s.listWorkers)
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("GET /readyz", s.readiness)
-	return s.recoverPanics(mux)
+	if s.metrics != nil {
+		mux.Handle("GET /metrics", s.metrics.Handler())
+	}
+	return telemetry.HTTPMiddleware(s.recoverPanics(mux), s.logger, s.metrics)
 }
 
 type createJobRequest struct {
@@ -82,7 +92,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if result.EnqueueError != nil {
-		s.logger.Warn("job persisted but enqueue failed; reconciliation will retry",
+		telemetry.Logger(r.Context(), s.logger).Warn("job persisted but enqueue failed; reconciliation will retry",
 			"job_id", result.Job.ID,
 			"error", result.EnqueueError,
 		)
@@ -91,6 +101,8 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 	status := http.StatusCreated
 	if !result.Created {
 		status = http.StatusOK
+	} else if s.metrics != nil {
+		s.metrics.JobsSubmitted.Inc()
 	}
 	writeJSON(w, status, result.Job)
 }
@@ -159,10 +171,13 @@ func (s *Server) retryJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if result.EnqueueError != nil {
-		s.logger.Warn("job retry persisted but enqueue failed; reconciliation will retry",
+		telemetry.Logger(r.Context(), s.logger).Warn("job retry persisted but enqueue failed; reconciliation will retry",
 			"job_id", result.Job.ID,
 			"error", result.EnqueueError,
 		)
+	}
+	if s.metrics != nil {
+		s.metrics.JobsRetried.Inc()
 	}
 	writeJSON(w, http.StatusOK, result.Job)
 }
@@ -189,6 +204,9 @@ func (s *Server) writeServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, "job_not_found", err.Error())
 	case errors.Is(err, jobs.ErrInvalidTransition):
 		writeError(w, http.StatusConflict, "invalid_transition", err.Error())
+	case errors.Is(err, jobs.ErrQueueFull):
+		w.Header().Set("Retry-After", "5")
+		writeError(w, http.StatusTooManyRequests, "queue_full", err.Error())
 	default:
 		s.logger.Error("request failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")

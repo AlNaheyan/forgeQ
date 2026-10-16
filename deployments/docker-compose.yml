@@ -40,6 +40,7 @@ services:
       DATABASE_URL: postgres://forgequeue:forgequeue@postgres:5432/forgequeue?sslmode=disable
       REDIS_ADDR: redis:6379
       COORDINATOR_ADDR: coordinator:9090
+      MAX_QUEUE_DEPTH: ${MAX_QUEUE_DEPTH:-100000}
       LOG_LEVEL: info
     ports:
       - "8080:8080"
@@ -74,12 +75,48 @@ services:
       RETRY_MAX_DELAY: 60s
       RETRY_PROMOTION_INTERVAL: 250ms
       SCHEDULER_STRATEGY: least_loaded
+      METRICS_PORT: 9101
       LOG_LEVEL: info
     ports:
       - "9090:9090"
+    expose:
+      - "9101"
     depends_on:
       api:
         condition: service_healthy
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.6.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      api:
+        condition: service_healthy
+      coordinator:
+        condition: service_started
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:12.2.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
     restart: unless-stopped
 
   worker:
@@ -103,3 +140,5 @@ services:
 volumes:
   postgres-data:
   redis-data:
+  prometheus-data:
+  grafana-data:

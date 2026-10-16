@@ -1,0 +1,31 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "graphTooltip": 1,
+  "panels": [
+    {"id": 1, "title": "Job Throughput", "type": "timeseries", "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0}, "targets": [{"expr": "sum(rate(forgequeue_jobs_completed_total[5m]))", "legendFormat": "completed/s"}, {"expr": "sum(rate(forgequeue_jobs_started_total[5m]))", "legendFormat": "started/s"}]},
+    {"id": 2, "title": "Queue Depth", "type": "timeseries", "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0}, "targets": [{"expr": "max(forgequeue_queue_depth)", "legendFormat": "queued"}]},
+    {"id": 3, "title": "Success Rate", "type": "stat", "gridPos": {"h": 4, "w": 4, "x": 16, "y": 0}, "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}}, "targets": [{"expr": "sum(rate(forgequeue_jobs_completed_total[5m])) / clamp_min(sum(rate(forgequeue_jobs_completed_total[5m])) + sum(rate(forgequeue_jobs_failed_total[5m])), 1e-9)"}]},
+    {"id": 4, "title": "Failure Rate", "type": "stat", "gridPos": {"h": 4, "w": 4, "x": 20, "y": 0}, "fieldConfig": {"defaults": {"unit": "ops"}}, "targets": [{"expr": "sum(rate(forgequeue_jobs_failed_total[5m]))"}]},
+    {"id": 5, "title": "Retry Rate", "type": "stat", "gridPos": {"h": 4, "w": 4, "x": 16, "y": 4}, "fieldConfig": {"defaults": {"unit": "ops"}}, "targets": [{"expr": "sum(rate(forgequeue_jobs_retried_total[5m]))"}]},
+    {"id": 6, "title": "Backpressure Rejections", "type": "stat", "gridPos": {"h": 4, "w": 4, "x": 20, "y": 4}, "targets": [{"expr": "sum(increase(forgequeue_backpressure_rejections_total[5m]))"}]},
+    {"id": 7, "title": "P50 Job Latency", "type": "stat", "gridPos": {"h": 5, "w": 4, "x": 0, "y": 8}, "fieldConfig": {"defaults": {"unit": "s"}}, "targets": [{"expr": "histogram_quantile(0.50, sum(rate(forgequeue_job_duration_seconds_bucket[5m])) by (le))"}]},
+    {"id": 8, "title": "P95 Job Latency", "type": "stat", "gridPos": {"h": 5, "w": 4, "x": 4, "y": 8}, "fieldConfig": {"defaults": {"unit": "s"}}, "targets": [{"expr": "histogram_quantile(0.95, sum(rate(forgequeue_job_duration_seconds_bucket[5m])) by (le))"}]},
+    {"id": 9, "title": "P99 Job Latency", "type": "stat", "gridPos": {"h": 5, "w": 4, "x": 8, "y": 8}, "fieldConfig": {"defaults": {"unit": "s"}}, "targets": [{"expr": "histogram_quantile(0.99, sum(rate(forgequeue_job_duration_seconds_bucket[5m])) by (le))"}]},
+    {"id": 10, "title": "Healthy Workers", "type": "stat", "gridPos": {"h": 5, "w": 4, "x": 12, "y": 8}, "targets": [{"expr": "max(forgequeue_workers_healthy)"}]},
+    {"id": 11, "title": "Unhealthy Workers", "type": "stat", "gridPos": {"h": 5, "w": 4, "x": 16, "y": 8}, "targets": [{"expr": "max(forgequeue_workers_unhealthy)"}]},
+    {"id": 12, "title": "Active Jobs", "type": "stat", "gridPos": {"h": 5, "w": 4, "x": 20, "y": 8}, "targets": [{"expr": "max(forgequeue_active_jobs)"}]},
+    {"id": 13, "title": "Lease Expirations", "type": "timeseries", "gridPos": {"h": 7, "w": 8, "x": 0, "y": 13}, "targets": [{"expr": "sum(rate(forgequeue_lease_expirations_total[5m]))", "legendFormat": "expirations/s"}]},
+    {"id": 14, "title": "API P95 Latency", "type": "timeseries", "gridPos": {"h": 7, "w": 8, "x": 8, "y": 13}, "fieldConfig": {"defaults": {"unit": "s"}}, "targets": [{"expr": "histogram_quantile(0.95, sum(rate(forgequeue_api_request_duration_seconds_bucket[5m])) by (le, route))", "legendFormat": "{{route}}"}]},
+    {"id": 15, "title": "Assignments by Worker", "type": "timeseries", "gridPos": {"h": 7, "w": 8, "x": 16, "y": 13}, "targets": [{"expr": "sum(rate(forgequeue_jobs_assigned_total[5m])) by (worker_id)", "legendFormat": "{{worker_id}}"}]}
+  ],
+  "refresh": "5s",
+  "schemaVersion": 41,
+  "tags": ["forgequeue"],
+  "templating": {"list": []},
+  "time": {"from": "now-30m", "to": "now"},
+  "timezone": "browser",
+  "title": "ForgeQueue Overview",
+  "uid": "forgequeue-overview",
+  "version": 1
+}

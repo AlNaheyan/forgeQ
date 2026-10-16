@@ -1,0 +1,189 @@
+{
+  "root_group": {
+    "name": "",
+    "path": "",
+    "id": "d41d8cd98f00b204e9800998ecf8427e",
+    "groups": {},
+    "checks": {
+      "readyz remains responsive": {
+        "name": "readyz remains responsive",
+        "path": "::readyz remains responsive",
+        "id": "4a90a2e7eaf507d46a78bcd83eac3076",
+        "passes": 51,
+        "fails": 0
+      },
+      "burst request was accepted or rejected by backpressure": {
+        "passes": 500,
+        "fails": 0,
+        "name": "burst request was accepted or rejected by backpressure",
+        "path": "::burst request was accepted or rejected by backpressure",
+        "id": "f5935233e8bb984ed539c8206eb40654"
+      }
+    }
+  },
+  "metrics": {
+    "forgequeue_burst_rejected": {
+      "count": 486,
+      "rate": 48.5307352942492,
+      "thresholds": {
+        "count>0": false
+      }
+    },
+    "vus": {
+      "value": 0,
+      "min": 0,
+      "max": 0
+    },
+    "http_req_duration{expected_response:true}": {
+      "p(95)": 74.91107484999999,
+      "avg": 31.51671076449275,
+      "min": 0.704,
+      "med": 27.839833499999997,
+      "max": 97.991458,
+      "p(90)": 65.57747110000001
+    },
+    "http_req_tls_handshaking": {
+      "avg": 0,
+      "min": 0,
+      "med": 0,
+      "max": 0,
+      "p(90)": 0,
+      "p(95)": 0
+    },
+    "http_req_sending": {
+      "avg": 0.031603097826087,
+      "min": 0.0015,
+      "med": 0.003667,
+      "max": 2.160875,
+      "p(90)": 0.067333,
+      "p(95)": 0.08416264999999998
+    },
+    "iteration_duration": {
+      "p(95)": 85.422583,
+      "avg": 33.65327556261344,
+      "min": 0.79975,
+      "med": 28.463333,
+      "max": 109.766333,
+      "p(90)": 75.422458
+    },
+    "http_req_duration{endpoint:readyz}": {
+      "p(95)": 8.11609389999999,
+      "avg": 3.7043189230769236,
+      "min": 0.704,
+      "med": 3.337021,
+      "max": 23.359917,
+      "p(90)": 4.4897625,
+      "thresholds": {
+        "p(99)<500": false
+      }
+    },
+    "forgequeue_burst_unexpected": {
+      "count": 0,
+      "rate": 0,
+      "thresholds": {
+        "count==0": false
+      }
+    },
+    "vus_max": {
+      "value": 101,
+      "min": 101,
+      "max": 101
+    },
+    "forgequeue_burst_accepted": {
+      "count": 14,
+      "rate": 1.3980047204104706
+    },
+    "http_req_failed": {
+      "passes": 0,
+      "fails": 552,
+      "value": 0
+    },
+    "data_sent": {
+      "count": 131414,
+      "rate": 13122.67088057297
+    },
+    "http_req_blocked": {
+      "avg": 1.8401458260869532,
+      "min": 0.000375,
+      "med": 0.001042,
+      "max": 19.09325,
+      "p(90)": 10.3759163,
+      "p(95)": 11.36520815
+    },
+    "http_reqs": {
+      "rate": 55.12132897618427,
+      "count": 552
+    },
+    "data_received": {
+      "count": 150418,
+      "rate": 15020.362431050156
+    },
+    "http_req_duration": {
+      "p(90)": 65.57747110000001,
+      "p(95)": 74.91107484999999,
+      "avg": 31.51671076449275,
+      "min": 0.704,
+      "med": 27.839833499999997,
+      "max": 97.991458
+    },
+    "http_req_connecting": {
+      "max": 19.08025,
+      "p(90)": 10.3657542,
+      "p(95)": 11.3533087,
+      "avg": 1.8293202753623186,
+      "min": 0,
+      "med": 0
+    },
+    "http_req_waiting": {
+      "max": 97.899167,
+      "p(90)": 65.4843667,
+      "p(95)": 74.83321629999999,
+      "avg": 31.446404925724668,
+      "min": 0.643333,
+      "med": 27.808646
+    },
+    "http_req_receiving": {
+      "min": 0.003875,
+      "med": 0.006708,
+      "max": 4.478666,
+      "p(90)": 0.06372560000000005,
+      "p(95)": 0.10507254999999996,
+      "avg": 0.03870274094202898
+    },
+    "checks{probe:readyz}": {
+      "fails": 0,
+      "passes": 51,
+      "thresholds": {
+        "rate>0.99": false
+      },
+      "value": 1
+    },
+    "checks": {
+      "passes": 551,
+      "fails": 0,
+      "value": 1
+    },
+    "forgequeue_burst_missing_retry_after": {
+      "count": 0,
+      "rate": 0,
+      "thresholds": {
+        "count==0": false
+      }
+    },
+    "dropped_iterations": {
+      "rate": 0,
+      "count": 0
+    },
+    "iterations": {
+      "count": 551,
+      "rate": 55.02147149615495
+    },
+    "dropped_iterations{scenario:readiness_probe}": {
+      "count": 0,
+      "rate": 0,
+      "thresholds": {
+        "count==0": false
+      }
+    }
+  }
+}

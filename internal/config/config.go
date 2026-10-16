@@ -25,8 +25,9 @@ type Config struct {
 	Service string
 	Env     string
 
-	HTTPPort int
-	GRPCPort int
+	HTTPPort    int
+	GRPCPort    int
+	MetricsPort int
 
 	DatabaseURL     string
 	RedisAddr       string
@@ -81,6 +82,13 @@ func load(service string, lookup lookupFunc) (Config, error) {
 		return Config{}, err
 	}
 	if cfg.GRPCPort, err = intValue(lookup, "GRPC_PORT", 9090, 1); err != nil {
+		return Config{}, err
+	}
+	metricsPortDefault := 9101
+	if service == "worker" {
+		metricsPortDefault = 9102
+	}
+	if cfg.MetricsPort, err = intValue(lookup, "METRICS_PORT", metricsPortDefault, 1); err != nil {
 		return Config{}, err
 	}
 
