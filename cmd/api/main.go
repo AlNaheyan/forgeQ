@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"forgequeue/internal/api"
 	"forgequeue/internal/config"
@@ -43,12 +42,17 @@ func run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	db, err := platform.OpenPostgres(ctx, cfg.DatabaseURL)
+	db, err := platform.OpenPostgresWithSettings(ctx, cfg.DatabaseURL, platform.PostgresSettings{
+		MaxOpenConns: cfg.PostgresMaxOpenConns, MaxIdleConns: cfg.PostgresMaxIdleConns,
+		ConnMaxIdleTime: cfg.PostgresConnMaxIdle, PingTimeout: cfg.DatabaseTimeout,
+	})
 	if err != nil {
 		return err
 	}
 	defer db.Close()
-	redisClient, err := platform.OpenRedis(ctx, cfg.RedisAddr)
+	redisClient, err := platform.OpenRedisWithSettings(ctx, cfg.RedisAddr, platform.RedisSettings{
+		PoolSize: cfg.RedisPoolSize, DialTimeout: cfg.RedisTimeout, IOTimeout: cfg.RedisTimeout, PingTimeout: cfg.RedisTimeout,
+	})
 	if err != nil {
 		return err
 	}
@@ -69,24 +73,27 @@ func run() error {
 	reconciler := queue.NewReconciler(repository, jobQueue, logger)
 	go reconciler.Run(ctx, cfg.QueueReconcileInterval)
 	handler := api.NewServer(service, func(r *http.Request) error {
-		readyCtx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		readyCtx, cancel := context.WithTimeout(r.Context(), cfg.DatabaseTimeout)
 		defer cancel()
 		if err := db.PingContext(readyCtx); err != nil {
 			return err
 		}
-		return redisClient.Ping(readyCtx).Err()
+		redisCtx, cancelRedis := context.WithTimeout(r.Context(), cfg.RedisTimeout)
+		defer cancelRedis()
+		return redisClient.Ping(redisCtx).Err()
 	}, logger).
-		WithWorkerProvider(api.NewGRPCWorkerProvider(workerpb.NewWorkerCoordinatorClient(coordinatorConnection))).
+		WithWorkerProvider(api.NewGRPCWorkerProvider(workerpb.NewWorkerCoordinatorClient(coordinatorConnection)).WithTimeout(cfg.GRPCTimeout)).
 		WithMetrics(metrics).
+		WithRequestTimeout(cfg.HTTPRequestTimeout).
 		Routes()
 
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.HTTPPort),
 		Handler:           handler,
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      15 * time.Second,
-		IdleTimeout:       60 * time.Second,
+		ReadHeaderTimeout: cfg.HTTPReadHeaderTimeout,
+		ReadTimeout:       cfg.HTTPReadTimeout,
+		WriteTimeout:      cfg.HTTPWriteTimeout,
+		IdleTimeout:       cfg.HTTPIdleTimeout,
 	}
 
 	serverErrors := make(chan error, 1)
@@ -97,7 +104,7 @@ func run() error {
 
 	select {
 	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 		defer cancel()
 		if err := server.Shutdown(shutdownCtx); err != nil {
 			return fmt.Errorf("shut down API: %w", err)

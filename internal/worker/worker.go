@@ -34,6 +34,7 @@ type Config struct {
 	Concurrency        int
 	PollInterval       time.Duration
 	LeaseRenewInterval time.Duration
+	JobTimeout         time.Duration
 	JobTypes           []string
 }
 
@@ -70,6 +71,9 @@ func NewWithBroker(config Config, broker Broker, handlers map[string]Handler, lo
 	}
 	if config.LeaseRenewInterval < 0 {
 		return nil, errors.New("worker lease renewal interval cannot be negative")
+	}
+	if config.JobTimeout <= 0 {
+		config.JobTimeout = 5 * time.Minute
 	}
 	if strings.TrimSpace(config.ID) == "" {
 		id, err := generateID()
@@ -112,12 +116,25 @@ func (w *Worker) Run(ctx context.Context) error {
 	var active sync.WaitGroup
 
 	for {
+		if ctx.Err() != nil {
+			w.logger.Info("worker draining active jobs", "active_jobs", w.ActiveJobs())
+			active.Wait()
+			w.logger.Info("worker stopped")
+			return nil
+		}
 		select {
 		case <-ctx.Done():
+			w.logger.Info("worker draining active jobs", "active_jobs", w.ActiveJobs())
 			active.Wait()
 			w.logger.Info("worker stopped")
 			return nil
 		case semaphore <- struct{}{}:
+		}
+		if ctx.Err() != nil {
+			<-semaphore
+			active.Wait()
+			w.logger.Info("worker stopped")
+			return nil
 		}
 
 		claimed, err := w.broker.ClaimJob(ctx, w.config.ID, w.config.JobTypes)
@@ -164,7 +181,9 @@ func (w *Worker) Run(ctx context.Context) error {
 
 func (w *Worker) execute(ctx context.Context, job jobs.Job, handler Handler) {
 	startedAt := time.Now()
-	executionCtx := withAttempt(ctx, job.AttemptCount)
+	jobCtx, cancelJob := context.WithTimeout(context.WithoutCancel(ctx), w.config.JobTimeout)
+	defer cancelJob()
+	executionCtx := withAttempt(jobCtx, job.AttemptCount)
 	var leaseSession *LeaseSession
 	if w.renewer != nil {
 		var err error

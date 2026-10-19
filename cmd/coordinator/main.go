@@ -45,12 +45,17 @@ func run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	db, err := platform.OpenPostgres(ctx, cfg.DatabaseURL)
+	db, err := platform.OpenPostgresWithSettings(ctx, cfg.DatabaseURL, platform.PostgresSettings{
+		MaxOpenConns: cfg.PostgresMaxOpenConns, MaxIdleConns: cfg.PostgresMaxIdleConns,
+		ConnMaxIdleTime: cfg.PostgresConnMaxIdle, PingTimeout: cfg.DatabaseTimeout,
+	})
 	if err != nil {
 		return err
 	}
 	defer db.Close()
-	redisClient, err := platform.OpenRedis(ctx, cfg.RedisAddr)
+	redisClient, err := platform.OpenRedisWithSettings(ctx, cfg.RedisAddr, platform.RedisSettings{
+		PoolSize: cfg.RedisPoolSize, DialTimeout: cfg.RedisTimeout, IOTimeout: cfg.RedisTimeout, PingTimeout: cfg.RedisTimeout,
+	})
 	if err != nil {
 		return err
 	}
@@ -124,7 +129,7 @@ func run() error {
 		}()
 		select {
 		case <-stopped:
-		case <-time.After(10 * time.Second):
+		case <-time.After(cfg.ShutdownTimeout):
 			grpcServer.Stop()
 		}
 		logger.Info("coordinator stopped")

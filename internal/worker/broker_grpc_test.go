@@ -84,3 +84,11 @@ func TestGRPCBrokerPassesFailureClassification(t *testing.T) {
 		t.Fatalf("FailJob: %v", err)
 	}
 }
+
+func TestBoundedRPCContextAddsDeadline(t *testing.T) {
+	ctx, cancel := boundedRPCContext(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if _, ok := ctx.Deadline(); !ok {
+		t.Fatal("RPC context has no deadline")
+	}
+}

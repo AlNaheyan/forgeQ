@@ -79,6 +79,21 @@ type concurrencyHandler struct {
 	duration time.Duration
 }
 
+type shutdownHandler struct {
+	started chan<- struct{}
+	release <-chan struct{}
+}
+
+func (h shutdownHandler) Execute(ctx context.Context, _ json.RawMessage) (any, error) {
+	h.started <- struct{}{}
+	select {
+	case <-h.release:
+		return map[string]bool{"drained": true}, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
 func (h *concurrencyHandler) Execute(context.Context, json.RawMessage) (any, error) {
 	active := h.active.Add(1)
 	defer h.active.Add(-1)
@@ -135,5 +150,54 @@ func TestWorkerRespectsConcurrencyLimit(t *testing.T) {
 	}
 	if maximum := handler.maximum.Load(); maximum != 3 {
 		t.Fatalf("maximum concurrency = %d, want 3", maximum)
+	}
+}
+
+func TestWorkerDrainsActiveJobOnShutdown(t *testing.T) {
+	started := make(chan struct{}, 1)
+	release := make(chan struct{})
+	repository := &memoryRepository{
+		jobs: map[string]jobs.Job{"job-1": {
+			ID: "job-1", Type: "test", Payload: json.RawMessage(`{}`), Status: jobs.StatusQueued, CreatedAt: time.Now(),
+		}},
+		completed: make(chan string, 1),
+	}
+	process, err := New(Config{
+		ID: "worker-drain", Concurrency: 1, PollInterval: time.Millisecond, JobTimeout: time.Second,
+		JobTypes: []string{"test"},
+	}, repository, &finiteQueue{ids: []string{"job-1"}}, map[string]Handler{
+		"test": shutdownHandler{started: started, release: release},
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- process.Run(ctx) }()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("job did not start")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		t.Fatalf("worker stopped before draining active job: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(release)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("worker did not stop after active job drained")
+	}
+	repository.mu.Lock()
+	status := repository.jobs["job-1"].Status
+	repository.mu.Unlock()
+	if status != jobs.StatusSucceeded {
+		t.Fatalf("job status = %s, want succeeded", status)
 	}
 }

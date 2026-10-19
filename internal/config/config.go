@@ -43,6 +43,22 @@ type Config struct {
 	RetryPromotionInterval time.Duration
 	QueueReconcileInterval time.Duration
 
+	HTTPReadHeaderTimeout time.Duration
+	HTTPReadTimeout       time.Duration
+	HTTPWriteTimeout      time.Duration
+	HTTPIdleTimeout       time.Duration
+	HTTPRequestTimeout    time.Duration
+	ShutdownTimeout       time.Duration
+	DatabaseTimeout       time.Duration
+	RedisTimeout          time.Duration
+	GRPCTimeout           time.Duration
+	JobTimeout            time.Duration
+	PostgresConnMaxIdle   time.Duration
+
+	PostgresMaxOpenConns int
+	PostgresMaxIdleConns int
+	RedisPoolSize        int
+
 	DefaultMaxAttempts int
 	MaxQueueDepth      int
 	WorkerConcurrency  int
@@ -141,6 +157,48 @@ func load(service string, lookup lookupFunc) (Config, error) {
 	if cfg.QueueReconcileInterval, err = durationValue(lookup, "QUEUE_RECONCILE_INTERVAL", 10*time.Second); err != nil {
 		return Config{}, err
 	}
+	if cfg.HTTPReadHeaderTimeout, err = durationValue(lookup, "HTTP_READ_HEADER_TIMEOUT", 5*time.Second); err != nil {
+		return Config{}, err
+	}
+	if cfg.HTTPReadTimeout, err = durationValue(lookup, "HTTP_READ_TIMEOUT", 15*time.Second); err != nil {
+		return Config{}, err
+	}
+	if cfg.HTTPWriteTimeout, err = durationValue(lookup, "HTTP_WRITE_TIMEOUT", 30*time.Second); err != nil {
+		return Config{}, err
+	}
+	if cfg.HTTPIdleTimeout, err = durationValue(lookup, "HTTP_IDLE_TIMEOUT", 60*time.Second); err != nil {
+		return Config{}, err
+	}
+	if cfg.HTTPRequestTimeout, err = durationValue(lookup, "HTTP_REQUEST_TIMEOUT", 15*time.Second); err != nil {
+		return Config{}, err
+	}
+	if cfg.ShutdownTimeout, err = durationValue(lookup, "SHUTDOWN_TIMEOUT", 10*time.Second); err != nil {
+		return Config{}, err
+	}
+	if cfg.DatabaseTimeout, err = durationValue(lookup, "DATABASE_TIMEOUT", 5*time.Second); err != nil {
+		return Config{}, err
+	}
+	if cfg.RedisTimeout, err = durationValue(lookup, "REDIS_TIMEOUT", 3*time.Second); err != nil {
+		return Config{}, err
+	}
+	if cfg.GRPCTimeout, err = durationValue(lookup, "GRPC_TIMEOUT", 5*time.Second); err != nil {
+		return Config{}, err
+	}
+	if cfg.JobTimeout, err = durationValue(lookup, "JOB_TIMEOUT", 5*time.Minute); err != nil {
+		return Config{}, err
+	}
+	if cfg.PostgresConnMaxIdle, err = durationValue(lookup, "POSTGRES_CONN_MAX_IDLE", 5*time.Minute); err != nil {
+		return Config{}, err
+	}
+	if cfg.PostgresMaxOpenConns, err = intValue(lookup, "POSTGRES_MAX_OPEN_CONNS", 25, 1); err != nil {
+		return Config{}, err
+	}
+	if cfg.PostgresMaxIdleConns, err = intValue(lookup, "POSTGRES_MAX_IDLE_CONNS", 5, 0); err != nil {
+		return Config{}, err
+	}
+	if cfg.RedisPoolSize, err = intValue(lookup, "REDIS_POOL_SIZE", 10, 1); err != nil {
+		return Config{}, err
+	}
 
 	if cfg.DefaultMaxAttempts, err = intValue(lookup, "DEFAULT_MAX_ATTEMPTS", 3, 1); err != nil {
 		return Config{}, err
@@ -184,6 +242,9 @@ func load(service string, lookup lookupFunc) (Config, error) {
 	}
 	if cfg.RetryBaseDelay > cfg.RetryMaxDelay {
 		return Config{}, errors.New("RETRY_BASE_DELAY must not exceed RETRY_MAX_DELAY")
+	}
+	if cfg.PostgresMaxIdleConns > cfg.PostgresMaxOpenConns {
+		return Config{}, errors.New("POSTGRES_MAX_IDLE_CONNS must not exceed POSTGRES_MAX_OPEN_CONNS")
 	}
 
 	return cfg, nil

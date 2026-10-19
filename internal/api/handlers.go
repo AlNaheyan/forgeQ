@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"forgequeue/internal/jobs"
 	"forgequeue/internal/telemetry"
@@ -17,11 +19,12 @@ import (
 const maxRequestBody = 1 << 20
 
 type Server struct {
-	jobs    *jobs.Service
-	ready   func(*http.Request) error
-	logger  *slog.Logger
-	workers WorkerProvider
-	metrics *telemetry.Metrics
+	jobs           *jobs.Service
+	ready          func(*http.Request) error
+	logger         *slog.Logger
+	workers        WorkerProvider
+	metrics        *telemetry.Metrics
+	requestTimeout time.Duration
 }
 
 func (s *Server) WithWorkerProvider(provider WorkerProvider) *Server {
@@ -31,6 +34,11 @@ func (s *Server) WithWorkerProvider(provider WorkerProvider) *Server {
 
 func (s *Server) WithMetrics(metrics *telemetry.Metrics) *Server {
 	s.metrics = metrics
+	return s
+}
+
+func (s *Server) WithRequestTimeout(timeout time.Duration) *Server {
+	s.requestTimeout = timeout
 	return s
 }
 
@@ -53,7 +61,11 @@ func (s *Server) Routes() http.Handler {
 	if s.metrics != nil {
 		mux.Handle("GET /metrics", s.metrics.Handler())
 	}
-	return telemetry.HTTPMiddleware(s.recoverPanics(mux), s.logger, s.metrics)
+	var handler http.Handler = telemetry.HTTPMiddleware(s.recoverPanics(mux), s.logger, s.metrics)
+	if s.requestTimeout > 0 {
+		handler = withRequestTimeout(handler, s.requestTimeout)
+	}
+	return handler
 }
 
 type createJobRequest struct {
@@ -67,6 +79,11 @@ type createJobRequest struct {
 func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 	var request createJobRequest
 	if err := decodeJSON(w, r, &request); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			writeError(w, http.StatusRequestEntityTooLarge, "payload_too_large", "request body exceeds the 1 MiB limit")
+			return
+		}
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
@@ -198,6 +215,8 @@ func (s *Server) readiness(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) writeServiceError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		writeError(w, http.StatusGatewayTimeout, "request_timeout", "request exceeded its time limit")
 	case errors.Is(err, jobs.ErrInvalidJob):
 		writeError(w, http.StatusBadRequest, "invalid_job", err.Error())
 	case errors.Is(err, jobs.ErrNotFound):
@@ -211,6 +230,14 @@ func (s *Server) writeServiceError(w http.ResponseWriter, err error) {
 		s.logger.Error("request failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
 	}
+}
+
+func withRequestTimeout(next http.Handler, timeout time.Duration) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), timeout)
+		defer cancel()
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }
 
 func (s *Server) recoverPanics(next http.Handler) http.Handler {

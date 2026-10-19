@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"forgequeue/internal/config"
 	"forgequeue/internal/telemetry"
@@ -45,22 +46,25 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("initialize coordinator broker: %w", err)
 	}
+	broker.WithTimeout(cfg.GRPCTimeout)
 
 	process, err := workerpkg.NewWithBroker(workerpkg.Config{
 		ID:                 cfg.WorkerID,
 		Concurrency:        cfg.WorkerConcurrency,
 		PollInterval:       cfg.WorkerPollInterval,
 		LeaseRenewInterval: cfg.LeaseRenewInterval,
+		JobTimeout:         cfg.JobTimeout,
 		JobTypes:           cfg.WorkerJobTypes,
 	}, broker, workerpkg.BuiltInHandlers(), logger)
 	if err != nil {
 		return fmt.Errorf("initialize worker: %w", err)
 	}
+	remoteRPC := workerpkg.NewGRPCCoordinatorRPC(client).WithTimeout(cfg.GRPCTimeout)
 	remote, err := workerpkg.NewRemoteCoordinator(workerpkg.RemoteConfig{
 		WorkerID:          process.ID(),
 		MaxConcurrency:    cfg.WorkerConcurrency,
 		SupportedJobTypes: cfg.WorkerJobTypes,
-	}, workerpkg.NewGRPCCoordinatorRPC(client), process.ActiveJobs, logger)
+	}, remoteRPC, process.ActiveJobs, logger)
 	if err != nil {
 		return fmt.Errorf("initialize worker registration: %w", err)
 	}
@@ -74,11 +78,35 @@ func run() error {
 	errorsChannel := make(chan error, 2)
 	go func() { errorsChannel <- remote.RunHeartbeat(runCtx, settings.HeartbeatInterval) }()
 	go func() { errorsChannel <- process.Run(runCtx) }()
-	firstErr := <-errorsChannel
-	cancel()
-	secondErr := <-errorsChannel
-	if firstErr != nil {
-		return firstErr
+	select {
+	case firstErr := <-errorsChannel:
+		cancel()
+		timer := time.NewTimer(cfg.ShutdownTimeout)
+		defer timer.Stop()
+		var secondErr error
+		select {
+		case secondErr = <-errorsChannel:
+		case <-timer.C:
+			return fmt.Errorf("worker graceful shutdown exceeded %s", cfg.ShutdownTimeout)
+		}
+		if firstErr != nil {
+			return firstErr
+		}
+		return secondErr
+	case <-ctx.Done():
+		cancel()
 	}
-	return secondErr
+	timer := time.NewTimer(cfg.ShutdownTimeout)
+	defer timer.Stop()
+	for range 2 {
+		select {
+		case err := <-errorsChannel:
+			if err != nil && err != context.Canceled {
+				return err
+			}
+		case <-timer.C:
+			return fmt.Errorf("worker graceful shutdown exceeded %s", cfg.ShutdownTimeout)
+		}
+	}
+	return nil
 }

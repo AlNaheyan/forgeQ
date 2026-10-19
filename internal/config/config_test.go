@@ -39,28 +39,37 @@ func TestLoadUsesDevelopmentDefaults(t *testing.T) {
 	if cfg.SchedulerStrategy != SchedulerLeastLoaded {
 		t.Fatalf("unexpected scheduler strategy: %q", cfg.SchedulerStrategy)
 	}
+	if cfg.PostgresMaxOpenConns != 25 || cfg.PostgresMaxIdleConns != 5 || cfg.RedisPoolSize != 10 || cfg.JobTimeout != 5*time.Minute || cfg.GRPCTimeout != 5*time.Second || cfg.HTTPRequestTimeout != 15*time.Second {
+		t.Fatalf("unexpected hardening defaults: %+v", cfg)
+	}
 }
 
 func TestLoadReadsOverrides(t *testing.T) {
 	cfg, err := load("worker", mapLookup(map[string]string{
-		"HTTP_PORT":           "8181",
-		"METRICS_PORT":        "9191",
-		"MAX_QUEUE_DEPTH":     "42",
-		"WORKER_CONCURRENCY":  "12",
-		"WORKER_ID":           "worker-test",
-		"WORKER_JOB_TYPES":    "sleep, fail, sleep",
-		"LEASE_DURATION":      "45s",
-		"LEASE_SCAN_INTERVAL": "2s",
-		"RETRY_BASE_DELAY":    "3s",
-		"RETRY_MAX_DELAY":     "20s",
-		"SCHEDULER_STRATEGY":  "weighted_capacity",
-		"LOG_LEVEL":           "debug",
+		"HTTP_PORT":               "8181",
+		"HTTP_REQUEST_TIMEOUT":    "10s",
+		"METRICS_PORT":            "9191",
+		"MAX_QUEUE_DEPTH":         "42",
+		"WORKER_CONCURRENCY":      "12",
+		"WORKER_ID":               "worker-test",
+		"WORKER_JOB_TYPES":        "sleep, fail, sleep",
+		"LEASE_DURATION":          "45s",
+		"LEASE_SCAN_INTERVAL":     "2s",
+		"RETRY_BASE_DELAY":        "3s",
+		"RETRY_MAX_DELAY":         "20s",
+		"SCHEDULER_STRATEGY":      "weighted_capacity",
+		"POSTGRES_MAX_OPEN_CONNS": "18",
+		"POSTGRES_MAX_IDLE_CONNS": "4",
+		"REDIS_POOL_SIZE":         "16",
+		"JOB_TIMEOUT":             "2m",
+		"GRPC_TIMEOUT":            "4s",
+		"LOG_LEVEL":               "debug",
 	}))
 	if err != nil {
 		t.Fatalf("load overrides: %v", err)
 	}
 
-	if cfg.HTTPPort != 8181 || cfg.MetricsPort != 9191 || cfg.MaxQueueDepth != 42 || cfg.WorkerConcurrency != 12 || cfg.WorkerID != "worker-test" || len(cfg.WorkerJobTypes) != 2 || cfg.LeaseDuration != 45*time.Second || cfg.LeaseScanInterval != 2*time.Second || cfg.RetryBaseDelay != 3*time.Second || cfg.RetryMaxDelay != 20*time.Second || cfg.SchedulerStrategy != SchedulerWeightedCapacity || cfg.LogLevel != "debug" {
+	if cfg.HTTPPort != 8181 || cfg.HTTPRequestTimeout != 10*time.Second || cfg.MetricsPort != 9191 || cfg.MaxQueueDepth != 42 || cfg.WorkerConcurrency != 12 || cfg.WorkerID != "worker-test" || len(cfg.WorkerJobTypes) != 2 || cfg.LeaseDuration != 45*time.Second || cfg.LeaseScanInterval != 2*time.Second || cfg.RetryBaseDelay != 3*time.Second || cfg.RetryMaxDelay != 20*time.Second || cfg.SchedulerStrategy != SchedulerWeightedCapacity || cfg.LogLevel != "debug" || cfg.PostgresMaxOpenConns != 18 || cfg.PostgresMaxIdleConns != 4 || cfg.RedisPoolSize != 16 || cfg.JobTimeout != 2*time.Minute || cfg.GRPCTimeout != 4*time.Second {
 		t.Fatalf("overrides were not applied: %+v", cfg)
 	}
 }
@@ -86,6 +95,7 @@ func TestLoadRejectsInvalidSettings(t *testing.T) {
 		{name: "retry relationship", env: map[string]string{"RETRY_BASE_DELAY": "61s"}, want: "RETRY_BASE_DELAY must not exceed"},
 		{name: "scheduler strategy", env: map[string]string{"SCHEDULER_STRATEGY": "random"}, want: "SCHEDULER_STRATEGY must be one of"},
 		{name: "empty job type", env: map[string]string{"WORKER_JOB_TYPES": "sleep,,fail"}, want: "WORKER_JOB_TYPES must contain non-empty"},
+		{name: "invalid pool relationship", env: map[string]string{"POSTGRES_MAX_OPEN_CONNS": "3", "POSTGRES_MAX_IDLE_CONNS": "4"}, want: "POSTGRES_MAX_IDLE_CONNS must not exceed"},
 	}
 
 	for _, tt := range tests {

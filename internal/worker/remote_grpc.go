@@ -17,7 +17,13 @@ import (
 // GRPCCoordinatorRPC adapts the generated worker coordinator client to the
 // transport-neutral CoordinatorRPC interface.
 type GRPCCoordinatorRPC struct {
-	client workerpb.WorkerCoordinatorClient
+	client  workerpb.WorkerCoordinatorClient
+	timeout time.Duration
+}
+
+func (r *GRPCCoordinatorRPC) WithTimeout(timeout time.Duration) *GRPCCoordinatorRPC {
+	r.timeout = timeout
+	return r
 }
 
 func NewGRPCCoordinatorRPC(client workerpb.WorkerCoordinatorClient) *GRPCCoordinatorRPC {
@@ -28,6 +34,8 @@ func (r *GRPCCoordinatorRPC) RegisterWorker(ctx context.Context, registration Re
 	if r == nil || r.client == nil {
 		return RemoteSettings{}, nonRetryableCoordinatorError(errors.New("gRPC coordinator client is required"))
 	}
+	ctx, cancel := boundedRPCContext(ctx, r.timeout)
+	defer cancel()
 	response, err := r.client.RegisterWorker(ctx, &workerpb.RegisterWorkerRequest{
 		WorkerId:          registration.WorkerID,
 		MaxConcurrency:    registration.MaxConcurrency,
@@ -58,6 +66,8 @@ func (r *GRPCCoordinatorRPC) Heartbeat(ctx context.Context, heartbeat HeartbeatM
 	if r == nil || r.client == nil {
 		return false, nonRetryableCoordinatorError(errors.New("gRPC coordinator client is required"))
 	}
+	ctx, cancel := boundedRPCContext(ctx, r.timeout)
+	defer cancel()
 	timestamp := timestamppb.New(heartbeat.Timestamp)
 	if err := timestamp.CheckValid(); err != nil {
 		return false, nonRetryableCoordinatorError(fmt.Errorf("heartbeat timestamp: %w", err))

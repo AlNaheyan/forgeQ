@@ -25,14 +25,25 @@ type WorkerProvider interface {
 }
 
 type GRPCWorkerProvider struct {
-	client workerpb.WorkerCoordinatorClient
+	client  workerpb.WorkerCoordinatorClient
+	timeout time.Duration
 }
 
 func NewGRPCWorkerProvider(client workerpb.WorkerCoordinatorClient) *GRPCWorkerProvider {
 	return &GRPCWorkerProvider{client: client}
 }
 
+func (p *GRPCWorkerProvider) WithTimeout(timeout time.Duration) *GRPCWorkerProvider {
+	p.timeout = timeout
+	return p
+}
+
 func (p *GRPCWorkerProvider) ListWorkers(ctx context.Context) ([]WorkerInfo, error) {
+	if p.timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, p.timeout)
+		defer cancel()
+	}
 	response, err := p.client.ListWorkers(ctx, &workerpb.ListWorkersRequest{})
 	if err != nil {
 		return nil, err

@@ -7,6 +7,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"forgequeue/internal/jobs"
 )
 
 func TestDashboardRoutes(t *testing.T) {
@@ -33,5 +36,31 @@ func TestDashboardRoutes(t *testing.T) {
 		if !strings.Contains(body, marker) {
 			t.Fatalf("dashboard body does not contain %q", marker)
 		}
+	}
+}
+
+func TestAPICancelsTimedOutRequestContext(t *testing.T) {
+	repository := &burstRepository{started: make(chan struct{}, 1), release: make(chan struct{})}
+	service := jobs.NewService(repository, &burstQueue{}, 3)
+	server := NewServer(service, nil, slog.New(slog.NewTextHandler(io.Discard, nil))).
+		WithRequestTimeout(10 * time.Millisecond).
+		Routes()
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, newCreateRequest())
+	if response.Code != http.StatusGatewayTimeout {
+		t.Fatalf("timed-out request status = %d, want 504: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestCreateJobRejectsOversizedRequestBody(t *testing.T) {
+	server := NewServer(nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil))).Routes()
+	request := httptest.NewRequest(http.MethodPost, "/v1/jobs", strings.NewReader(`{"type":"sleep","payload":"`+strings.Repeat("x", maxRequestBody)+`"}`))
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized request status = %d, want 413: %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `"code":"payload_too_large"`) {
+		t.Fatalf("oversized request error = %s", response.Body.String())
 	}
 }

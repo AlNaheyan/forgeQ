@@ -13,7 +13,8 @@ import (
 )
 
 type GRPCBroker struct {
-	client workerpb.WorkerCoordinatorClient
+	client  workerpb.WorkerCoordinatorClient
+	timeout time.Duration
 }
 
 func NewGRPCBroker(client workerpb.WorkerCoordinatorClient) (*GRPCBroker, error) {
@@ -23,7 +24,14 @@ func NewGRPCBroker(client workerpb.WorkerCoordinatorClient) (*GRPCBroker, error)
 	return &GRPCBroker{client: client}, nil
 }
 
+func (b *GRPCBroker) WithTimeout(timeout time.Duration) *GRPCBroker {
+	b.timeout = timeout
+	return b
+}
+
 func (b *GRPCBroker) ClaimJob(ctx context.Context, workerID string, supportedTypes []string) (jobs.Job, error) {
+	ctx, cancel := boundedRPCContext(ctx, b.timeout)
+	defer cancel()
 	response, err := b.client.ClaimJob(ctx, &workerpb.ClaimJobRequest{
 		WorkerId:          workerID,
 		SupportedJobTypes: append([]string(nil), supportedTypes...),
@@ -45,6 +53,8 @@ func (b *GRPCBroker) ClaimJob(ctx context.Context, workerID string, supportedTyp
 }
 
 func (b *GRPCBroker) CompleteJob(ctx context.Context, workerID, jobID string, result []byte) error {
+	ctx, cancel := boundedRPCContext(ctx, b.timeout)
+	defer cancel()
 	_, err := b.client.CompleteJob(ctx, &workerpb.CompleteJobRequest{
 		WorkerId:   workerID,
 		JobId:      jobID,
@@ -54,6 +64,8 @@ func (b *GRPCBroker) CompleteJob(ctx context.Context, workerID, jobID string, re
 }
 
 func (b *GRPCBroker) RenewLease(ctx context.Context, workerID, jobID string) (time.Time, error) {
+	ctx, cancel := boundedRPCContext(ctx, b.timeout)
+	defer cancel()
 	response, err := b.client.RenewLease(ctx, &workerpb.RenewLeaseRequest{
 		WorkerId: workerID,
 		JobId:    jobID,
@@ -65,6 +77,8 @@ func (b *GRPCBroker) RenewLease(ctx context.Context, workerID, jobID string) (ti
 }
 
 func (b *GRPCBroker) FailJob(ctx context.Context, workerID, jobID, failure string, retryable bool) error {
+	ctx, cancel := boundedRPCContext(ctx, b.timeout)
+	defer cancel()
 	_, err := b.client.FailJob(ctx, &workerpb.FailJobRequest{
 		WorkerId:  workerID,
 		JobId:     jobID,
@@ -72,6 +86,13 @@ func (b *GRPCBroker) FailJob(ctx context.Context, workerID, jobID, failure strin
 		Retryable: retryable,
 	})
 	return err
+}
+
+func boundedRPCContext(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if timeout <= 0 {
+		return context.WithCancel(ctx)
+	}
+	return context.WithTimeout(ctx, timeout)
 }
 
 func jobFromProto(value *workerpb.Job) (jobs.Job, error) {

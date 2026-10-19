@@ -144,6 +144,9 @@ Wave 12 failure-injection commands are available through `make chaos-worker-cras
 `artifacts/chaos/`; see [`docs/chaos-results.md`](docs/chaos-results.md) before
 running experiments against the local Compose stack.
 
+Wave 13 runtime limits, connection pools, shutdown behavior, and payload-size
+protection are described in [`docs/production-hardening.md`](docs/production-hardening.md).
+
 Run the test suite:
 
 ```bash
