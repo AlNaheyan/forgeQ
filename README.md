@@ -147,6 +147,11 @@ running experiments against the local Compose stack.
 Wave 13 runtime limits, connection pools, shutdown behavior, and payload-size
 protection are described in [`docs/production-hardening.md`](docs/production-hardening.md).
 
+Wave 14 adds an optional Kafka lifecycle-event stream backed by a transactional
+PostgreSQL outbox. It stays disabled in the default stack; opt in with the
+Compose overlay and see [`docs/event-stream.md`](docs/event-stream.md) for the
+delivery contract and consumer guidance.
+
 Run the test suite:
 
 ```bash

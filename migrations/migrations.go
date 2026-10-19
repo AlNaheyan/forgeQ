@@ -41,6 +41,16 @@ func Up(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
+// ConfigureEventStream toggles transactional job-event capture. It remains
+// disabled by default so deployments without Kafka do not accumulate outbox
+// rows they cannot publish.
+func ConfigureEventStream(ctx context.Context, db *sql.DB, enabled bool) error {
+	if _, err := db.ExecContext(ctx, "UPDATE event_stream_config SET enabled = $1 WHERE singleton = TRUE", enabled); err != nil {
+		return fmt.Errorf("configure event stream: %w", err)
+	}
+	return nil
+}
+
 func apply(ctx context.Context, db *sql.DB, name string) error {
 	var applied bool
 	if err := db.QueryRowContext(ctx,

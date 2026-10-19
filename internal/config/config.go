@@ -59,6 +59,13 @@ type Config struct {
 	PostgresMaxIdleConns int
 	RedisPoolSize        int
 
+	EventsEnabled        bool
+	KafkaBrokers         []string
+	KafkaTopic           string
+	EventPublishInterval time.Duration
+	EventOutboxLease     time.Duration
+	EventBatchSize       int
+
 	DefaultMaxAttempts int
 	MaxQueueDepth      int
 	WorkerConcurrency  int
@@ -199,6 +206,35 @@ func load(service string, lookup lookupFunc) (Config, error) {
 	if cfg.RedisPoolSize, err = intValue(lookup, "REDIS_POOL_SIZE", 10, 1); err != nil {
 		return Config{}, err
 	}
+	if cfg.EventsEnabled, err = boolValue(lookup, "EVENTS_ENABLED", false); err != nil {
+		return Config{}, err
+	}
+	kafkaBrokersDefault := "localhost:9092"
+	if cfg.Env == Production {
+		kafkaBrokersDefault = ""
+	}
+	kafkaBrokersRaw, err := stringValue(lookup, "KAFKA_BROKERS", kafkaBrokersDefault)
+	if err != nil {
+		return Config{}, err
+	}
+	if kafkaBrokersRaw != "" {
+		cfg.KafkaBrokers, err = csvValue("KAFKA_BROKERS", kafkaBrokersRaw)
+		if err != nil {
+			return Config{}, err
+		}
+	}
+	if cfg.KafkaTopic, err = stringValue(lookup, "KAFKA_TOPIC", "forgequeue.events"); err != nil {
+		return Config{}, err
+	}
+	if cfg.EventPublishInterval, err = durationValue(lookup, "EVENT_PUBLISH_INTERVAL", 500*time.Millisecond); err != nil {
+		return Config{}, err
+	}
+	if cfg.EventOutboxLease, err = durationValue(lookup, "EVENT_OUTBOX_LEASE", 30*time.Second); err != nil {
+		return Config{}, err
+	}
+	if cfg.EventBatchSize, err = intValue(lookup, "EVENT_BATCH_SIZE", 100, 1); err != nil {
+		return Config{}, err
+	}
 
 	if cfg.DefaultMaxAttempts, err = intValue(lookup, "DEFAULT_MAX_ATTEMPTS", 3, 1); err != nil {
 		return Config{}, err
@@ -245,6 +281,9 @@ func load(service string, lookup lookupFunc) (Config, error) {
 	}
 	if cfg.PostgresMaxIdleConns > cfg.PostgresMaxOpenConns {
 		return Config{}, errors.New("POSTGRES_MAX_IDLE_CONNS must not exceed POSTGRES_MAX_OPEN_CONNS")
+	}
+	if cfg.EventsEnabled && len(cfg.KafkaBrokers) == 0 {
+		return Config{}, errors.New("KAFKA_BROKERS is required when EVENTS_ENABLED=true")
 	}
 
 	return cfg, nil
@@ -298,6 +337,18 @@ func intValue(lookup lookupFunc, key string, fallback, minimum int) (int, error)
 	}
 	if value < minimum {
 		return 0, fmt.Errorf("%s must be at least %d", key, minimum)
+	}
+	return value, nil
+}
+
+func boolValue(lookup lookupFunc, key string, fallback bool) (bool, error) {
+	raw, ok := lookup(key)
+	if !ok {
+		return fallback, nil
+	}
+	value, err := strconv.ParseBool(strings.TrimSpace(raw))
+	if err != nil {
+		return false, fmt.Errorf("%s must be a boolean: %w", key, err)
 	}
 	return value, nil
 }

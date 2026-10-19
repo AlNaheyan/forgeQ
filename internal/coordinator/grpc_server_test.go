@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"forgequeue/internal/eventstream"
 	"forgequeue/internal/jobs"
 	"forgequeue/internal/queue"
 	"forgequeue/proto/workerpb"
@@ -118,6 +119,15 @@ type serverTestQueue struct {
 	mu      sync.Mutex
 	ids     []string
 	delayed map[string]time.Time
+}
+
+type serverTestEventRecorder struct {
+	events []eventstream.Type
+}
+
+func (r *serverTestEventRecorder) RecordEvent(_ context.Context, eventType eventstream.Type, _, _ string, _ json.RawMessage) error {
+	r.events = append(r.events, eventType)
+	return nil
 }
 
 func (q *serverTestQueue) Dequeue(context.Context) (string, error) {
@@ -256,5 +266,30 @@ func TestGRPCServerSchedulesRetryableFailure(t *testing.T) {
 	jobQueue.mu.Unlock()
 	if !scheduled || dueAt.Before(now.Add(2*time.Second)) {
 		t.Fatalf("retry schedule = %v, scheduled=%t", dueAt, scheduled)
+	}
+}
+
+func TestGRPCServerRecordsWorkerRegistrationAndLossOnce(t *testing.T) {
+	clock := &fakeClock{now: time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)}
+	registry := newTestRegistry(t, clock)
+	recorder := &serverTestEventRecorder{}
+	server, err := NewGRPCServer(ServerConfig{
+		HeartbeatInterval: 5 * time.Second,
+		LeaseDuration:     30 * time.Second,
+		EventRecorder:     recorder,
+	}, registry, &serverTestRepository{jobs: map[string]jobs.Job{}}, &serverTestQueue{})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+	if _, err := server.RegisterWorker(context.Background(), &workerpb.RegisterWorkerRequest{
+		WorkerId: "worker-event-test", MaxConcurrency: 1, SupportedJobTypes: []string{"sleep"},
+	}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	clock.Advance(16 * time.Second)
+	server.RecordWorkerLosses(context.Background())
+	server.RecordWorkerLosses(context.Background())
+	if len(recorder.events) != 2 || recorder.events[0] != eventstream.WorkerRegistered || recorder.events[1] != eventstream.WorkerLost {
+		t.Fatalf("recorded events = %v, want registration and one loss", recorder.events)
 	}
 }

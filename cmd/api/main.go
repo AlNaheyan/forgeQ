@@ -7,9 +7,11 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"forgequeue/internal/api"
 	"forgequeue/internal/config"
+	"forgequeue/internal/eventstream"
 	"forgequeue/internal/jobs"
 	"forgequeue/internal/platform"
 	"forgequeue/internal/queue"
@@ -64,6 +66,43 @@ func run() error {
 	defer coordinatorConnection.Close()
 	if err := migrations.Up(ctx, db); err != nil {
 		return fmt.Errorf("apply migrations: %w", err)
+	}
+	if err := migrations.ConfigureEventStream(ctx, db, cfg.EventsEnabled); err != nil {
+		return err
+	}
+	if cfg.EventsEnabled {
+		writer, err := eventstream.NewKafkaWriter(cfg.KafkaBrokers, cfg.KafkaTopic)
+		if err != nil {
+			return fmt.Errorf("initialize Kafka event writer: %w", err)
+		}
+		hostname, _ := os.Hostname()
+		publisher, err := eventstream.NewPublisher(
+			postgresrepository.NewEventOutboxRepository(db), writer,
+			eventstream.PublisherConfig{
+				Owner: fmt.Sprintf("api-%s-%d", hostname, os.Getpid()), BatchSize: cfg.EventBatchSize,
+				LeaseDuration: cfg.EventOutboxLease, PollInterval: cfg.EventPublishInterval,
+			}, logger,
+		)
+		if err != nil {
+			_ = writer.Close()
+			return fmt.Errorf("initialize event publisher: %w", err)
+		}
+		publisherDone := make(chan struct{})
+		go func() {
+			defer close(publisherDone)
+			publisher.Run(ctx)
+		}()
+		defer func() {
+			stop()
+			select {
+			case <-publisherDone:
+			case <-time.After(cfg.ShutdownTimeout):
+				logger.Warn("event publisher did not stop before shutdown deadline")
+			}
+			if err := writer.Close(); err != nil {
+				logger.Warn("close Kafka event writer", "error", err)
+			}
+		}()
 	}
 
 	repository := postgresrepository.NewJobRepository(db)

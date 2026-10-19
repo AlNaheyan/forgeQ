@@ -1,0 +1,25 @@
+# Optional Wave 14 overlay. Use this file only when you want to run Kafka.
+services:
+  kafka:
+    image: apache/kafka:4.2.2
+    ports:
+      - "9092:9092"
+    restart: unless-stopped
+
+  api:
+    environment:
+      EVENTS_ENABLED: "true"
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_TOPIC: forgequeue.events
+    depends_on:
+      kafka:
+        condition: service_started
+
+  coordinator:
+    environment:
+      EVENTS_ENABLED: "true"
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_TOPIC: forgequeue.events
+    depends_on:
+      kafka:
+        condition: service_started

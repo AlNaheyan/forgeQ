@@ -39,6 +39,9 @@ func TestLoadUsesDevelopmentDefaults(t *testing.T) {
 	if cfg.SchedulerStrategy != SchedulerLeastLoaded {
 		t.Fatalf("unexpected scheduler strategy: %q", cfg.SchedulerStrategy)
 	}
+	if cfg.EventsEnabled || cfg.KafkaTopic != "forgequeue.events" || len(cfg.KafkaBrokers) != 1 || cfg.KafkaBrokers[0] != "localhost:9092" || cfg.EventBatchSize != 100 {
+		t.Fatalf("unexpected event-stream defaults: enabled=%t brokers=%v topic=%q batch=%d", cfg.EventsEnabled, cfg.KafkaBrokers, cfg.KafkaTopic, cfg.EventBatchSize)
+	}
 	if cfg.PostgresMaxOpenConns != 25 || cfg.PostgresMaxIdleConns != 5 || cfg.RedisPoolSize != 10 || cfg.JobTimeout != 5*time.Minute || cfg.GRPCTimeout != 5*time.Second || cfg.HTTPRequestTimeout != 15*time.Second {
 		t.Fatalf("unexpected hardening defaults: %+v", cfg)
 	}
@@ -64,6 +67,12 @@ func TestLoadReadsOverrides(t *testing.T) {
 		"JOB_TIMEOUT":             "2m",
 		"GRPC_TIMEOUT":            "4s",
 		"LOG_LEVEL":               "debug",
+		"EVENTS_ENABLED":          "true",
+		"KAFKA_BROKERS":           "kafka-1:9092, kafka-2:9092",
+		"KAFKA_TOPIC":             "custom.events",
+		"EVENT_PUBLISH_INTERVAL":  "1s",
+		"EVENT_OUTBOX_LEASE":      "45s",
+		"EVENT_BATCH_SIZE":        "25",
 	}))
 	if err != nil {
 		t.Fatalf("load overrides: %v", err)
@@ -71,6 +80,9 @@ func TestLoadReadsOverrides(t *testing.T) {
 
 	if cfg.HTTPPort != 8181 || cfg.HTTPRequestTimeout != 10*time.Second || cfg.MetricsPort != 9191 || cfg.MaxQueueDepth != 42 || cfg.WorkerConcurrency != 12 || cfg.WorkerID != "worker-test" || len(cfg.WorkerJobTypes) != 2 || cfg.LeaseDuration != 45*time.Second || cfg.LeaseScanInterval != 2*time.Second || cfg.RetryBaseDelay != 3*time.Second || cfg.RetryMaxDelay != 20*time.Second || cfg.SchedulerStrategy != SchedulerWeightedCapacity || cfg.LogLevel != "debug" || cfg.PostgresMaxOpenConns != 18 || cfg.PostgresMaxIdleConns != 4 || cfg.RedisPoolSize != 16 || cfg.JobTimeout != 2*time.Minute || cfg.GRPCTimeout != 4*time.Second {
 		t.Fatalf("overrides were not applied: %+v", cfg)
+	}
+	if !cfg.EventsEnabled || len(cfg.KafkaBrokers) != 2 || cfg.KafkaTopic != "custom.events" || cfg.EventPublishInterval != time.Second || cfg.EventOutboxLease != 45*time.Second || cfg.EventBatchSize != 25 {
+		t.Fatalf("event-stream overrides were not applied: %+v", cfg)
 	}
 }
 
@@ -96,6 +108,8 @@ func TestLoadRejectsInvalidSettings(t *testing.T) {
 		{name: "scheduler strategy", env: map[string]string{"SCHEDULER_STRATEGY": "random"}, want: "SCHEDULER_STRATEGY must be one of"},
 		{name: "empty job type", env: map[string]string{"WORKER_JOB_TYPES": "sleep,,fail"}, want: "WORKER_JOB_TYPES must contain non-empty"},
 		{name: "invalid pool relationship", env: map[string]string{"POSTGRES_MAX_OPEN_CONNS": "3", "POSTGRES_MAX_IDLE_CONNS": "4"}, want: "POSTGRES_MAX_IDLE_CONNS must not exceed"},
+		{name: "invalid event bool", env: map[string]string{"EVENTS_ENABLED": "sometimes"}, want: "EVENTS_ENABLED must be a boolean"},
+		{name: "events require brokers", env: map[string]string{"EVENTS_ENABLED": "true", "KAFKA_BROKERS": ""}, want: "KAFKA_BROKERS cannot be empty"},
 	}
 
 	for _, tt := range tests {

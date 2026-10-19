@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"forgequeue/internal/eventstream"
 	"forgequeue/internal/jobs"
 	"forgequeue/internal/queue"
 	"forgequeue/internal/telemetry"
@@ -43,6 +44,7 @@ type ServerConfig struct {
 	Scheduler         Scheduler
 	Logger            *slog.Logger
 	Metrics           *telemetry.Metrics
+	EventRecorder     eventstream.Recorder
 }
 
 // GRPCServer implements the worker control plane. PostgreSQL leases are the
@@ -59,6 +61,9 @@ type GRPCServer struct {
 	scheduler         Scheduler
 	logger            *slog.Logger
 	metrics           *telemetry.Metrics
+	eventRecorder     eventstream.Recorder
+	workerHealthMu    sync.Mutex
+	workerHealth      map[string]Health
 	offersMu          sync.Mutex
 	offers            map[string]string
 }
@@ -86,11 +91,13 @@ func NewGRPCServer(config ServerConfig, registry *Registry, repository jobReposi
 		scheduler:         config.Scheduler,
 		logger:            config.Logger,
 		metrics:           config.Metrics,
+		eventRecorder:     config.EventRecorder,
+		workerHealth:      make(map[string]Health),
 		offers:            make(map[string]string),
 	}, nil
 }
 
-func (s *GRPCServer) RegisterWorker(_ context.Context, request *workerpb.RegisterWorkerRequest) (*workerpb.RegisterWorkerResponse, error) {
+func (s *GRPCServer) RegisterWorker(ctx context.Context, request *workerpb.RegisterWorkerRequest) (*workerpb.RegisterWorkerResponse, error) {
 	if request == nil {
 		return nil, status.Error(codes.InvalidArgument, "registration request is required")
 	}
@@ -101,6 +108,21 @@ func (s *GRPCServer) RegisterWorker(_ context.Context, request *workerpb.Registe
 	})
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	s.workerHealthMu.Lock()
+	s.workerHealth[snapshot.WorkerID] = snapshot.Health
+	s.workerHealthMu.Unlock()
+	if s.eventRecorder != nil {
+		payload, _ := json.Marshal(map[string]any{
+			"worker_id":           snapshot.WorkerID,
+			"max_concurrency":     snapshot.MaxConcurrency,
+			"supported_job_types": snapshot.SupportedJobTypes,
+			"registered_at":       snapshot.RegisteredAt,
+		})
+		if err := s.eventRecorder.RecordEvent(ctx, eventstream.WorkerRegistered, "worker", snapshot.WorkerID, payload); err != nil {
+			s.logger.Warn("record worker registration event failed", "worker_id", snapshot.WorkerID, "error", err)
+			return nil, status.Error(codes.Unavailable, "worker registration event could not be recorded")
+		}
 	}
 	s.observeWorkers()
 	return &workerpb.RegisterWorkerResponse{
@@ -363,6 +385,36 @@ func (s *GRPCServer) observeWorkers() {
 // RefreshMetrics updates time-dependent registry gauges even when a failed
 // worker is no longer sending heartbeats.
 func (s *GRPCServer) RefreshMetrics() { s.observeWorkers() }
+
+// RecordWorkerLosses writes one durable event when a known worker first
+// crosses the unhealthy threshold in this coordinator session.
+func (s *GRPCServer) RecordWorkerLosses(ctx context.Context) {
+	if s.eventRecorder == nil {
+		return
+	}
+	for _, snapshot := range s.registry.List() {
+		s.workerHealthMu.Lock()
+		previous, known := s.workerHealth[snapshot.WorkerID]
+		s.workerHealth[snapshot.WorkerID] = snapshot.Health
+		s.workerHealthMu.Unlock()
+		if !known || snapshot.Health != HealthUnhealthy || previous == HealthUnhealthy {
+			continue
+		}
+		payload, _ := json.Marshal(map[string]any{
+			"worker_id":         snapshot.WorkerID,
+			"last_heartbeat_at": snapshot.LastHeartbeatAt,
+			"detected_at":       time.Now().UTC(),
+		})
+		if err := s.eventRecorder.RecordEvent(ctx, eventstream.WorkerLost, "worker", snapshot.WorkerID, payload); err != nil {
+			s.logger.Warn("record worker loss event failed", "worker_id", snapshot.WorkerID, "error", err)
+			s.workerHealthMu.Lock()
+			if s.workerHealth[snapshot.WorkerID] == HealthUnhealthy {
+				s.workerHealth[snapshot.WorkerID] = previous
+			}
+			s.workerHealthMu.Unlock()
+		}
+	}
+}
 
 func (s *GRPCServer) observeJobDuration(startedAt time.Time) {
 	if duration := time.Since(startedAt); !startedAt.IsZero() && duration >= 0 {

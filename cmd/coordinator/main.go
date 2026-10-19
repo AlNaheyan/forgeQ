@@ -13,6 +13,7 @@ import (
 
 	"forgequeue/internal/config"
 	"forgequeue/internal/coordinator"
+	"forgequeue/internal/eventstream"
 	"forgequeue/internal/platform"
 	"forgequeue/internal/queue"
 	postgresrepository "forgequeue/internal/repository/postgres"
@@ -63,6 +64,9 @@ func run() error {
 	if err := migrations.Up(ctx, db); err != nil {
 		return fmt.Errorf("apply migrations: %w", err)
 	}
+	if err := migrations.ConfigureEventStream(ctx, db, cfg.EventsEnabled); err != nil {
+		return err
+	}
 
 	registry, err := coordinator.NewRegistry(coordinator.HealthThresholds{
 		SuspectAfter:   (cfg.HeartbeatInterval + cfg.WorkerTimeout) / 2,
@@ -72,6 +76,10 @@ func run() error {
 		return fmt.Errorf("initialize worker registry: %w", err)
 	}
 	repository := postgresrepository.NewJobRepository(db)
+	var eventRecorder eventstream.Recorder
+	if cfg.EventsEnabled {
+		eventRecorder = postgresrepository.NewEventOutboxRepository(db)
+	}
 	jobQueue := queue.NewRedisQueue(redisClient, "forgequeue")
 	scheduler, err := newScheduler(cfg.SchedulerStrategy)
 	if err != nil {
@@ -86,9 +94,10 @@ func run() error {
 			coordinator.DefaultRetryJitterFraction,
 			nil,
 		),
-		Scheduler: scheduler,
-		Logger:    logger,
-		Metrics:   metrics,
+		Scheduler:     scheduler,
+		Logger:        logger,
+		Metrics:       metrics,
+		EventRecorder: eventRecorder,
 	}, registry, repository, jobQueue)
 	if err != nil {
 		return fmt.Errorf("initialize coordinator service: %w", err)
@@ -155,6 +164,9 @@ type metricsRefresher interface {
 func observeCoordinatorState(ctx context.Context, queue queueDepthReader, refresher metricsRefresher, metrics *telemetry.Metrics, logger *slog.Logger) {
 	observe := func() {
 		refresher.RefreshMetrics()
+		if observer, ok := refresher.(interface{ RecordWorkerLosses(context.Context) }); ok {
+			observer.RecordWorkerLosses(ctx)
+		}
 		depth, err := queue.Depth(ctx)
 		if err != nil {
 			if !errors.Is(err, context.Canceled) {
