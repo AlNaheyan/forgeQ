@@ -20,7 +20,7 @@ func (p staticWorkerProvider) ListWorkers(context.Context) ([]WorkerInfo, error)
 }
 
 func TestListWorkersEndpoint(t *testing.T) {
-	server := NewServer(nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil))).
+	server := newTestServer(nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil))).
 		WithWorkerProvider(staticWorkerProvider{workers: []WorkerInfo{{
 			WorkerID:          "worker-1",
 			Health:            "healthy",

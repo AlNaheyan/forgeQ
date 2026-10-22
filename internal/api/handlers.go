@@ -14,11 +14,13 @@ import (
 
 	"forgequeue/internal/jobs"
 	"forgequeue/internal/telemetry"
+	"forgequeue/internal/tenant"
 )
 
 const maxRequestBody = 1 << 20
 
 type Server struct {
+	auth           Authenticator
 	jobs           *jobs.Service
 	ready          func(*http.Request) error
 	logger         *slog.Logger
@@ -50,16 +52,16 @@ func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", s.dashboardRedirect)
 	mux.HandleFunc("GET /dashboard", s.dashboard)
-	mux.HandleFunc("POST /v1/jobs", s.createJob)
-	mux.HandleFunc("GET /v1/jobs", s.listJobs)
-	mux.HandleFunc("GET /v1/jobs/{id}", s.getJob)
-	mux.HandleFunc("POST /v1/jobs/{id}/cancel", s.cancelJob)
-	mux.HandleFunc("POST /v1/jobs/{id}/retry", s.retryJob)
-	mux.HandleFunc("GET /v1/workers", s.listWorkers)
+	mux.HandleFunc("POST /v1/jobs", s.protect(s.createJob, false))
+	mux.HandleFunc("GET /v1/jobs", s.protect(s.listJobs, false))
+	mux.HandleFunc("GET /v1/jobs/{id}", s.protect(s.getJob, false))
+	mux.HandleFunc("POST /v1/jobs/{id}/cancel", s.protect(s.cancelJob, false))
+	mux.HandleFunc("POST /v1/jobs/{id}/retry", s.protect(s.retryJob, false))
+	mux.HandleFunc("GET /v1/workers", s.protect(s.listWorkers, true))
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("GET /readyz", s.readiness)
 	if s.metrics != nil {
-		mux.Handle("GET /metrics", s.metrics.Handler())
+		mux.HandleFunc("GET /metrics", s.protect(s.metrics.Handler().ServeHTTP, true))
 	}
 	var handler http.Handler = telemetry.HTTPMiddleware(s.recoverPanics(mux), s.logger, s.metrics)
 	if s.requestTimeout > 0 {
@@ -215,6 +217,11 @@ func (s *Server) readiness(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) writeServiceError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, tenant.ErrPayload):
+		writeError(w, 413, "payload_too_large", "tenant payload limit exceeded")
+	case errors.Is(err, tenant.ErrQuota):
+		w.Header().Set("Retry-After", "60")
+		writeError(w, 429, "tenant_quota_exceeded", "tenant admission quota exceeded")
 	case errors.Is(err, context.DeadlineExceeded):
 		writeError(w, http.StatusGatewayTimeout, "request_timeout", "request exceeded its time limit")
 	case errors.Is(err, jobs.ErrInvalidJob):
@@ -227,7 +234,7 @@ func (s *Server) writeServiceError(w http.ResponseWriter, err error) {
 		w.Header().Set("Retry-After", "5")
 		writeError(w, http.StatusTooManyRequests, "queue_full", err.Error())
 	default:
-		s.logger.Error("request failed", "error", err)
+		s.logger.Error("request failed")
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
 	}
 }
@@ -244,7 +251,7 @@ func (s *Server) recoverPanics(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				s.logger.Error("request panic", "error", fmt.Sprint(recovered))
+				s.logger.Error("request panic")
 				writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
 			}
 		}()

@@ -13,7 +13,7 @@ import (
 )
 
 func TestDashboardRoutes(t *testing.T) {
-	server := NewServer(nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil))).Routes()
+	server := newTestServer(nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil))).Routes()
 
 	redirectRequest := httptest.NewRequest(http.MethodGet, "/", nil)
 	redirectResponse := httptest.NewRecorder()
@@ -42,7 +42,7 @@ func TestDashboardRoutes(t *testing.T) {
 func TestAPICancelsTimedOutRequestContext(t *testing.T) {
 	repository := &burstRepository{started: make(chan struct{}, 1), release: make(chan struct{})}
 	service := jobs.NewService(repository, &burstQueue{}, 3)
-	server := NewServer(service, nil, slog.New(slog.NewTextHandler(io.Discard, nil))).
+	server := newTestServer(service, nil, slog.New(slog.NewTextHandler(io.Discard, nil))).
 		WithRequestTimeout(10 * time.Millisecond).
 		Routes()
 	response := httptest.NewRecorder()
@@ -53,7 +53,7 @@ func TestAPICancelsTimedOutRequestContext(t *testing.T) {
 }
 
 func TestCreateJobRejectsOversizedRequestBody(t *testing.T) {
-	server := NewServer(nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil))).Routes()
+	server := newTestServer(nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil))).Routes()
 	request := httptest.NewRequest(http.MethodPost, "/v1/jobs", strings.NewReader(`{"type":"sleep","payload":"`+strings.Repeat("x", maxRequestBody)+`"}`))
 	response := httptest.NewRecorder()
 	server.ServeHTTP(response, request)

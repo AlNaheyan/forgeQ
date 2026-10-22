@@ -13,6 +13,7 @@ import (
 	"forgequeue/internal/jobs"
 	"forgequeue/internal/queue"
 	"forgequeue/internal/telemetry"
+	"forgequeue/internal/tenant"
 	"forgequeue/proto/workerpb"
 
 	"google.golang.org/grpc/codes"
@@ -184,6 +185,14 @@ func (s *GRPCServer) ClaimJob(ctx context.Context, request *workerpb.ClaimJobReq
 	if depth > 1000 {
 		depth = 1000
 	}
+	var deferred []jobs.Job
+	defer func() {
+		for _, job := range deferred {
+			if err := s.queue.Enqueue(ctx, job.ID, job.Priority, job.CreatedAt); err != nil {
+				s.logger.Warn("deferred job enqueue failed; reconciliation will retry", "job_id", job.ID)
+			}
+		}
+	}()
 	for attempt := int64(0); attempt < depth; attempt++ {
 		jobID, err := s.queue.Dequeue(ctx)
 		if errors.Is(err, queue.ErrEmpty) {
@@ -225,6 +234,12 @@ func (s *GRPCServer) ClaimJob(ctx context.Context, request *workerpb.ClaimJobReq
 		}
 
 		claimed, err := s.repository.LeaseJob(ctx, candidate.ID, worker.WorkerID, s.leaseDuration)
+		if errors.Is(err, tenant.ErrConcurrency) {
+			_, _ = s.registry.RollbackReservation(worker.WorkerID)
+			s.deleteOffer(candidate.ID)
+			deferred = append(deferred, candidate)
+			continue
+		}
 		if errors.Is(err, jobs.ErrClaimConflict) {
 			_, _ = s.registry.RollbackReservation(worker.WorkerID)
 			s.deleteOffer(candidate.ID)
@@ -490,6 +505,7 @@ func healthToProto(health Health) workerpb.WorkerHealth {
 
 func jobToProto(job jobs.Job) *workerpb.Job {
 	result := &workerpb.Job{
+		TenantId:        job.TenantID,
 		Id:              job.ID,
 		Type:            job.Type,
 		PayloadJson:     append([]byte(nil), job.Payload...),

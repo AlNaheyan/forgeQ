@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"forgequeue/internal/jobs"
+	"forgequeue/internal/tenant"
 )
 
 // LeaseJob atomically assigns an eligible queued job to workerID. The state
@@ -27,7 +28,32 @@ func (r *JobRepository) LeaseJob(
 		leaseMicroseconds = 1
 	}
 
-	job, err := scanJob(r.db.QueryRowContext(ctx, `
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return jobs.Job{}, err
+	}
+	defer tx.Rollback()
+	var tenantID string
+	if err := tx.QueryRowContext(ctx, `SELECT tenant_id FROM jobs WHERE id=$1`, id).Scan(&tenantID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return jobs.Job{}, jobs.ErrClaimConflict
+		}
+		return jobs.Job{}, err
+	}
+	if err := lockTenant(ctx, tx, tenantID); err != nil {
+		return jobs.Job{}, err
+	}
+	var limit, active int
+	if err := tx.QueryRowContext(ctx, `SELECT max_concurrent FROM tenants WHERE id=$1`, tenantID).Scan(&limit); err != nil {
+		return jobs.Job{}, err
+	}
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM jobs WHERE tenant_id=$1 AND status IN ('leased','running') AND lease_expires_at>clock_timestamp()`, tenantID).Scan(&active); err != nil {
+		return jobs.Job{}, err
+	}
+	if active >= limit {
+		return jobs.Job{}, tenant.ErrConcurrency
+	}
+	job, err := scanJob(tx.QueryRowContext(ctx, `
 		UPDATE jobs
 		SET status = $1,
 			lease_owner = $2,
@@ -45,6 +71,9 @@ func (r *JobRepository) LeaseJob(
 	}
 	if err != nil {
 		return jobs.Job{}, fmt.Errorf("lease job: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return jobs.Job{}, err
 	}
 	return job, nil
 }

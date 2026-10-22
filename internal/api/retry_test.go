@@ -57,7 +57,7 @@ func (q *retryQueue) Enqueue(context.Context, string, int, time.Time) error {
 func TestRetryJobReturnsPersistedQueuedJob(t *testing.T) {
 	repository := &retryRepository{job: jobs.Job{ID: "dead-job", Status: jobs.StatusQueued}}
 	service := jobs.NewService(repository, &retryQueue{err: errors.New("Redis unavailable")}, 3)
-	server := NewServer(service, nil, slog.New(slog.NewTextHandler(io.Discard, nil))).Routes()
+	server := newTestServer(service, nil, slog.New(slog.NewTextHandler(io.Discard, nil))).Routes()
 	request := httptest.NewRequest(http.MethodPost, "/v1/jobs/dead-job/retry", nil)
 	response := httptest.NewRecorder()
 
@@ -71,7 +71,7 @@ func TestRetryJobReturnsPersistedQueuedJob(t *testing.T) {
 func TestRetryJobRejectsNonDeadLetterState(t *testing.T) {
 	repository := &retryRepository{err: jobs.ErrInvalidTransition}
 	service := jobs.NewService(repository, &retryQueue{}, 3)
-	server := NewServer(service, nil, slog.New(slog.NewTextHandler(io.Discard, nil))).Routes()
+	server := newTestServer(service, nil, slog.New(slog.NewTextHandler(io.Discard, nil))).Routes()
 	request := httptest.NewRequest(http.MethodPost, "/v1/jobs/running-job/retry", nil)
 	response := httptest.NewRecorder()
 

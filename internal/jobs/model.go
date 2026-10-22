@@ -23,6 +23,7 @@ const (
 )
 
 type Job struct {
+	TenantID        string          `json:"tenant_id"`
 	ID              string          `json:"job_id"`
 	Type            string          `json:"type"`
 	Payload         json.RawMessage `json:"payload,omitempty"`

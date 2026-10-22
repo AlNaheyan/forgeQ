@@ -68,7 +68,7 @@ func TestBurstBackpressureReturns429AndKeepsHealthResponsive(t *testing.T) {
 	}
 	queue := &burstQueue{}
 	service := jobs.NewService(repository, queue, 3).WithBackpressure(queue, 1, nil)
-	handler := NewServer(service, nil, slog.New(slog.NewTextHandler(io.Discard, nil))).Routes()
+	handler := newTestServer(service, nil, slog.New(slog.NewTextHandler(io.Discard, nil))).Routes()
 
 	acceptedResponse := httptest.NewRecorder()
 	acceptedDone := make(chan struct{})

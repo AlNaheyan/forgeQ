@@ -17,6 +17,7 @@ import (
 	"forgequeue/internal/queue"
 	postgresrepository "forgequeue/internal/repository/postgres"
 	"forgequeue/internal/telemetry"
+	"forgequeue/internal/tenant"
 	"forgequeue/migrations"
 	"forgequeue/proto/workerpb"
 
@@ -59,7 +60,11 @@ func run() error {
 		return err
 	}
 	defer redisClient.Close()
-	coordinatorConnection, err := grpc.NewClient(cfg.CoordinatorAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	rpcAuth, err := tenant.LoadRPCAuth()
+	if err != nil {
+		return err
+	}
+	coordinatorConnection, err := grpc.NewClient(cfg.CoordinatorAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithPerRPCCredentials(rpcAuth))
 	if err != nil {
 		return fmt.Errorf("create coordinator client: %w", err)
 	}
@@ -121,6 +126,7 @@ func run() error {
 		defer cancelRedis()
 		return redisClient.Ping(redisCtx).Err()
 	}, logger).
+		WithAuthenticator(tenant.NewStore(db)).
 		WithWorkerProvider(api.NewGRPCWorkerProvider(workerpb.NewWorkerCoordinatorClient(coordinatorConnection)).WithTimeout(cfg.GRPCTimeout)).
 		WithMetrics(metrics).
 		WithRequestTimeout(cfg.HTTPRequestTimeout).

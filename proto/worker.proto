@@ -40,6 +40,7 @@ enum WorkerHealth {
 }
 
 message Job {
+	string tenant_id = 17;
   string id = 1;
   string type = 2;
   bytes payload_json = 3;

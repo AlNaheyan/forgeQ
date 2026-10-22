@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: forgequeue
       POSTGRES_PASSWORD: forgequeue
     ports:
-      - "${POSTGRES_PORT:-55432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-55432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -19,7 +19,7 @@ services:
     image: redis:7-alpine
     command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis-data:/data
     healthcheck:
@@ -37,6 +37,7 @@ services:
     environment:
       APP_ENV: development
       HTTP_PORT: 8080
+      CONTROL_PLANE_TOKEN: ${CONTROL_PLANE_TOKEN:-}
       DATABASE_URL: postgres://forgequeue:forgequeue@postgres:5432/forgequeue?sslmode=disable
       REDIS_ADDR: redis:6379
       COORDINATOR_ADDR: coordinator:9090
@@ -55,7 +56,7 @@ services:
       MAX_QUEUE_DEPTH: ${MAX_QUEUE_DEPTH:-100000}
       LOG_LEVEL: info
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -78,6 +79,7 @@ services:
     environment:
       APP_ENV: development
       GRPC_PORT: 9090
+      CONTROL_PLANE_TOKEN: ${CONTROL_PLANE_TOKEN:-}
       DATABASE_URL: postgres://forgequeue:forgequeue@postgres:5432/forgequeue?sslmode=disable
       REDIS_ADDR: redis:6379
       POSTGRES_MAX_OPEN_CONNS: 25
@@ -97,7 +99,7 @@ services:
       METRICS_PORT: 9101
       LOG_LEVEL: info
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     expose:
       - "9101"
     depends_on:
@@ -112,9 +114,10 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
     ports:
-      - "9091:9090"
+      - "127.0.0.1:9091:9090"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./secrets:/etc/forgequeue/secrets:ro
       - prometheus-data:/prometheus
     depends_on:
       api:
@@ -130,7 +133,7 @@ services:
       GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
       GF_AUTH_DISABLE_LOGIN_FORM: "true"
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
@@ -149,6 +152,7 @@ services:
       APP_ENV: development
       COORDINATOR_ADDR: coordinator:9090
       WORKER_CONCURRENCY: 4
+      CONTROL_PLANE_TOKEN: ${CONTROL_PLANE_TOKEN:-}
       WORKER_JOB_TYPES: sleep,fail
       LEASE_RENEW_INTERVAL: 10s
       GRPC_TIMEOUT: 5s

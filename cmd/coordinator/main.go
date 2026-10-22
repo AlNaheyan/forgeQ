@@ -18,6 +18,7 @@ import (
 	"forgequeue/internal/queue"
 	postgresrepository "forgequeue/internal/repository/postgres"
 	"forgequeue/internal/telemetry"
+	"forgequeue/internal/tenant"
 	"forgequeue/migrations"
 	"forgequeue/proto/workerpb"
 
@@ -116,7 +117,11 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("listen for gRPC: %w", err)
 	}
-	grpcServer := grpc.NewServer()
+	rpcAuth, err := tenant.LoadRPCAuth()
+	if err != nil {
+		return err
+	}
+	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(rpcAuth.Intercept), grpc.StreamInterceptor(rpcAuth.InterceptStream))
 	workerpb.RegisterWorkerCoordinatorServer(grpcServer, coordinatorServer)
 	healthServer := health.NewServer()
 	healthpb.RegisterHealthServer(grpcServer, healthServer)

@@ -10,6 +10,7 @@ import (
 
 	"forgequeue/internal/config"
 	"forgequeue/internal/telemetry"
+	"forgequeue/internal/tenant"
 	workerpkg "forgequeue/internal/worker"
 	"forgequeue/proto/workerpb"
 
@@ -36,7 +37,11 @@ func run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	connection, err := grpc.NewClient(cfg.CoordinatorAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	rpcAuth, err := tenant.LoadRPCAuth()
+	if err != nil {
+		return err
+	}
+	connection, err := grpc.NewClient(cfg.CoordinatorAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithPerRPCCredentials(rpcAuth))
 	if err != nil {
 		return fmt.Errorf("create coordinator client: %w", err)
 	}

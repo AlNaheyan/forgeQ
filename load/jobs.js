@@ -105,6 +105,7 @@ export function submitJob() {
     }),
     {
       headers: {
+        Authorization: `Bearer ${__ENV.FORGEQUEUE_API_KEY || ""}`,
         "Content-Type": "application/json",
         "Idempotency-Key": idempotencyKey,
       },

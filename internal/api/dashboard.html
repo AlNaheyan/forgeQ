@@ -138,6 +138,10 @@
   </header>
 
   <main class="shell">
+    <form id="auth-form"><label for="api-key">API key (kept only in memory)</label>
+      <input id="api-key" type="password" autocomplete="off" required placeholder="fq_…">
+      <button type="submit">Connect</button><button type="button" id="logout">Clear session</button>
+    </form>
     <div class="section-head">
       <div><h2>System snapshot</h2><p>Live state from the API, coordinator, PostgreSQL, and workers.</p></div>
       <div class="refresh"><span>Auto-refresh 1.5s</span><button id="refresh" class="ghost" type="button">Refresh now</button></div>
@@ -206,11 +210,20 @@
     const state = { jobs: [], workers: [], filter: "all", refreshing: false, selectedJob: null };
     const statuses = ["all", "queued", "leased", "running", "succeeded", "failed", "retry_wait", "dead_letter", "canceled"];
     const $ = id => document.getElementById(id);
+    let apiKey = "";
+    $("auth-form").addEventListener("submit", event => {
+      event.preventDefault();
+      if (apiKey) { toast("Clear session before switching keys", true); return; }
+      apiKey = $("api-key").value.trim(); $("api-key").value = "";
+      refresh();
+    });
+    $("logout").addEventListener("click", () => location.reload());
 
     async function fetchJSON(url, options) {
-      const response = await fetch(url, options);
+      if (!apiKey) throw new Error("Connect with an API key first");
+      const response = await fetch(url, { ...options, headers: { ...options?.headers, Authorization: `Bearer ${apiKey}` }, cache: "no-store" });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error?.message || `${response.status} ${response.statusText}`);
+      if (!response.ok) { const error = new Error(body.error?.message || `${response.status} ${response.statusText}`); error.status = response.status; throw error; }
       return body;
     }
 
@@ -399,12 +412,12 @@
     }
 
     async function refresh() {
-      if (state.refreshing) return;
+      if (state.refreshing || !apiKey) return;
       state.refreshing = true;
       try {
         const [jobResult, workerResult] = await Promise.all([
           fetchJSON("/v1/jobs?limit=100"),
-          fetchJSON("/v1/workers")
+          fetchJSON("/v1/workers").catch(error => { if (error.status === 403) return { workers: [] }; throw error; })
         ]);
         state.jobs = jobResult.jobs || [];
         state.workers = workerResult.workers || [];
@@ -420,6 +433,9 @@
         $("last-updated").textContent = new Date().toLocaleTimeString();
       } catch (error) {
         setConnection("down", "DISCONNECTED");
+        state.jobs = []; state.workers = []; state.selectedJob = null;
+        $("job-dialog").close(); $("dialog-json").textContent = "";
+        renderStats(); renderJobs(); renderWorkers();
         toast(`Refresh failed: ${error.message}`, true);
       } finally {
         state.refreshing = false;

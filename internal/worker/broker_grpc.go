@@ -119,6 +119,7 @@ func jobFromProto(value *workerpb.Job) (jobs.Job, error) {
 		return jobs.Job{}, err
 	}
 	job := jobs.Job{
+		TenantID:        value.GetTenantId(),
 		ID:              value.GetId(),
 		Type:            value.GetType(),
 		Payload:         append(json.RawMessage(nil), value.GetPayloadJson()...),

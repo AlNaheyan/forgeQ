@@ -8,4 +8,6 @@ coverage.out
 
 # Generated recovery runs stay local; selected evidence is explicitly committed.
 /artifacts/recovery/
+/deployments/secrets/*
+!/deployments/secrets/.gitkeep
 

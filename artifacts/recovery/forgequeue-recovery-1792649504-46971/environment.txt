@@ -1,0 +1,36 @@
+go version go1.25.0 darwin/arm64
+Darwin arm64
+e8532363602f8ae6f01598431c0abe7ceb5b26cd
+ .env.example                                  |  4 +++
+ .gitignore                                    |  2 ++
+ README.md                                     | 21 ++++++++++--
+ cmd/api/main.go                               |  8 ++++-
+ cmd/coordinator/main.go                       |  7 +++-
+ cmd/worker/main.go                            |  7 +++-
+ deployments/docker-compose.yml                | 10 ++++--
+ deployments/prometheus/prometheus.yml         |  2 ++
+ docs/forgequeue_build_spec.md                 |  6 +++-
+ internal/api/backpressure_test.go             |  2 +-
+ internal/api/dashboard.html                   | 24 +++++++++++---
+ internal/api/dashboard_test.go                |  6 ++--
+ internal/api/handlers.go                      | 25 +++++++++-----
+ internal/api/handlers_integration_test.go     | 13 ++++++--
+ internal/api/retry_test.go                    |  4 +--
+ internal/api/workers_test.go                  |  2 +-
+ internal/coordinator/grpc_server.go           | 16 +++++++++
+ internal/idempotency/executor.go              | 11 +++---
+ internal/jobs/model.go                        |  1 +
+ internal/recovery/process_integration_test.go | 20 +++++++++--
+ internal/repository/postgres/jobs.go          | 48 +++++++++++++++++++--------
+ internal/repository/postgres/leases.go        | 31 ++++++++++++++++-
+ internal/repository/postgres/retries.go       | 29 ++++++++++++++--
+ internal/worker/broker_grpc.go                |  1 +
+ internal/worker/worker.go                     |  7 +++-
+ load/burst.js                                 |  1 +
+ load/chaos.js                                 |  1 +
+ load/jobs.js                                  |  1 +
+ proto/worker.proto                            |  1 +
+ proto/workerpb/worker.pb.go                   | 15 +++++++--
+ scripts/poll-worker-health.py                 |  4 ++-
+ 31 files changed, 268 insertions(+), 62 deletions(-)
+Explicit loopback ports: PostgreSQL=50665 Redis=50666

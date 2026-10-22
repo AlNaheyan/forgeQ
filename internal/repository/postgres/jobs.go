@@ -12,17 +12,18 @@ import (
 
 	"forgequeue/internal/jobs"
 	"forgequeue/internal/repository"
+	"forgequeue/internal/tenant"
 )
 
 const jobColumns = `
 	id, type, payload, status, priority, attempt_count, max_attempts,
 	scheduled_at, lease_owner, lease_expires_at, idempotency_key,
-	result, last_error, created_at, updated_at, lease_generation`
+	result, last_error, created_at, updated_at, lease_generation, tenant_id`
 
 const joinedJobColumns = `
 	j.id, j.type, j.payload, j.status, j.priority, j.attempt_count, j.max_attempts,
 	j.scheduled_at, j.lease_owner, j.lease_expires_at, j.idempotency_key,
-	j.result, j.last_error, j.created_at, j.updated_at, j.lease_generation`
+	j.result, j.last_error, j.created_at, j.updated_at, j.lease_generation, j.tenant_id`
 
 type JobRepository struct {
 	db *sql.DB
@@ -38,15 +39,31 @@ func (r *JobRepository) CreateJob(ctx context.Context, job jobs.Job) (jobs.Job, 
 		return jobs.Job{}, false, fmt.Errorf("begin create job: %w", err)
 	}
 	defer tx.Rollback()
+	job.TenantID = tenant.ID(ctx)
+	if err := lockTenant(ctx, tx, job.TenantID); err != nil {
+		return jobs.Job{}, false, err
+	}
+	if job.IdempotencyKey != "" {
+		existing, err := scanJob(tx.QueryRowContext(ctx, `SELECT `+joinedJobColumns+` FROM jobs j JOIN idempotency_keys i ON i.job_id=j.id WHERE i.tenant_id=$1 AND i.key=$2`, job.TenantID, job.IdempotencyKey))
+		if err == nil {
+			return existing, false, nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return jobs.Job{}, false, err
+		}
+	}
+	if err := admitTenant(ctx, tx, job.TenantID, len(job.Payload)); err != nil {
+		return jobs.Job{}, false, err
+	}
 
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO jobs (
 			id, type, payload, status, priority, attempt_count, max_attempts,
-			scheduled_at, idempotency_key, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9, ''), $10, $11)`,
+			scheduled_at, idempotency_key, created_at, updated_at, tenant_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9, ''), $10, $11, $12)`,
 		job.ID, job.Type, []byte(job.Payload), job.Status, job.Priority,
 		job.AttemptCount, job.MaxAttempts, job.ScheduledAt, job.IdempotencyKey,
-		job.CreatedAt, job.UpdatedAt,
+		job.CreatedAt, job.UpdatedAt, job.TenantID,
 	); err != nil {
 		return jobs.Job{}, false, fmt.Errorf("insert job: %w", err)
 	}
@@ -54,10 +71,10 @@ func (r *JobRepository) CreateJob(ctx context.Context, job jobs.Job) (jobs.Job, 
 	if job.IdempotencyKey != "" {
 		var insertedJobID string
 		err := tx.QueryRowContext(ctx, `
-			INSERT INTO idempotency_keys (key, job_id)
-			VALUES ($1, $2)
-			ON CONFLICT (key) DO NOTHING
-			RETURNING job_id`, job.IdempotencyKey, job.ID).Scan(&insertedJobID)
+			INSERT INTO idempotency_keys (key, job_id, tenant_id)
+			VALUES ($1, $2, $3)
+			ON CONFLICT (tenant_id, key) DO NOTHING
+			RETURNING job_id`, job.IdempotencyKey, job.ID, job.TenantID).Scan(&insertedJobID)
 		if errors.Is(err, sql.ErrNoRows) {
 			if rollbackErr := tx.Rollback(); rollbackErr != nil {
 				return jobs.Job{}, false, fmt.Errorf("rollback duplicate job: %w", rollbackErr)
@@ -81,7 +98,7 @@ func (r *JobRepository) GetJobByIdempotencyKey(ctx context.Context, key string) 
 		SELECT `+joinedJobColumns+`
 		FROM jobs j
 		JOIN idempotency_keys i ON i.job_id = j.id
-		WHERE i.key = $1`, key)
+		WHERE i.key = $1 AND i.tenant_id = $2`, key, tenant.ID(ctx))
 	job, err := scanJob(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return jobs.Job{}, jobs.ErrNotFound
@@ -94,7 +111,7 @@ func (r *JobRepository) GetJobByIdempotencyKey(ctx context.Context, key string) 
 
 func (r *JobRepository) GetJob(ctx context.Context, id string) (jobs.Job, error) {
 	job, err := scanJob(r.db.QueryRowContext(ctx,
-		"SELECT "+jobColumns+" FROM jobs WHERE id = $1", id,
+		"SELECT "+jobColumns+" FROM jobs WHERE id = $1 AND ($2::uuid IS NULL OR tenant_id=$2)", id, tenant.Scope(ctx),
 	))
 	if errors.Is(err, sql.ErrNoRows) {
 		return jobs.Job{}, jobs.ErrNotFound
@@ -120,6 +137,9 @@ func (r *JobRepository) ListJobs(ctx context.Context, filter repository.ListFilt
 		return "$" + strconv.Itoa(len(args))
 	}
 
+	if p, ok := tenant.FromContext(ctx); ok {
+		clauses = append(clauses, "tenant_id = "+addArg(p.ID))
+	}
 	if filter.Status != "" {
 		clauses = append(clauses, "status = "+addArg(filter.Status))
 	}
@@ -196,9 +216,9 @@ func (r *JobRepository) CancelJob(ctx context.Context, id string) (jobs.Job, err
 	job, err := scanJob(r.db.QueryRowContext(ctx, `
 		UPDATE jobs
 		SET status = $1, updated_at = NOW()
-		WHERE id = $2 AND status IN ($3, $4)
+		WHERE id = $2 AND status IN ($3, $4) AND ($5::uuid IS NULL OR tenant_id=$5)
 		RETURNING `+jobColumns,
-		jobs.StatusCanceled, id, jobs.StatusQueued, jobs.StatusRetryWait,
+		jobs.StatusCanceled, id, jobs.StatusQueued, jobs.StatusRetryWait, tenant.Scope(ctx),
 	))
 	if err == nil {
 		return job, nil
@@ -339,7 +359,7 @@ func scanJob(row scanner) (jobs.Job, error) {
 		&job.ID, &job.Type, &job.Payload, &job.Status, &job.Priority,
 		&job.AttemptCount, &job.MaxAttempts, &job.ScheduledAt, &leaseOwner,
 		&leaseExpiresAt, &idempotencyKey, &result, &lastError,
-		&job.CreatedAt, &job.UpdatedAt, &job.LeaseGeneration,
+		&job.CreatedAt, &job.UpdatedAt, &job.LeaseGeneration, &job.TenantID,
 	)
 	if err != nil {
 		return jobs.Job{}, err

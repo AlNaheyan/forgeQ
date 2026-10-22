@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"forgequeue/internal/tenant"
 	"strings"
 	"unicode/utf8"
 )
@@ -101,10 +102,10 @@ func (e *Executor) executeOnce(
 
 	var insertedKey string
 	err = tx.QueryRowContext(ctx, `
-		INSERT INTO execution_idempotency_keys (key)
-		VALUES ($1)
-		ON CONFLICT (key) DO NOTHING
-		RETURNING key`, key).Scan(&insertedKey)
+		INSERT INTO execution_idempotency_keys (key,tenant_id)
+		VALUES ($1,$2)
+		ON CONFLICT (tenant_id,key) DO NOTHING
+		RETURNING key`, key, tenant.ID(ctx)).Scan(&insertedKey)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -118,7 +119,7 @@ func (e *Executor) executeOnce(
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE execution_idempotency_keys
 		SET completed_at = NOW()
-		WHERE key = $1`, key); err != nil {
+		WHERE key = $1 AND tenant_id=$2`, key, tenant.ID(ctx)); err != nil {
 		return false, fmt.Errorf("complete idempotency key: %w", err)
 	}
 	if err := tx.Commit(); err != nil {

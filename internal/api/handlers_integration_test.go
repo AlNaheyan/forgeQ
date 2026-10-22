@@ -18,6 +18,7 @@ import (
 	"forgequeue/internal/platform"
 	jobqueue "forgequeue/internal/queue"
 	postgresrepository "forgequeue/internal/repository/postgres"
+	"forgequeue/internal/tenant"
 	"forgequeue/migrations"
 
 	"github.com/redis/go-redis/v9"
@@ -64,8 +65,16 @@ func TestJobHTTPFlow(t *testing.T) {
 	}
 	service := jobs.NewService(repository, enqueuer, 3)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler := api.NewServer(service, nil, logger).Routes()
-	server := httptest.NewServer(handler)
+	keys := tenant.NewStore(db)
+	credential, err := keys.Issue(ctx, tenant.LegacyID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := api.NewServer(service, nil, logger).WithAuthenticator(keys).Routes()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Header.Set("Authorization", "Bearer "+credential.Token)
+		handler.ServeHTTP(w, r)
+	}))
 	defer server.Close()
 
 	jobID := submitJob(t, server.URL, http.StatusCreated)

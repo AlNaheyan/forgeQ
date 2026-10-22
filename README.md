@@ -16,6 +16,10 @@ The Wave 11 report includes measured 10k, 50k, and 100k baselines plus a
 
 ## Planned architecture
 
+Wave 17 adds tenant API keys, scoped job access, durable tenant quotas, and
+service-authenticated worker RPCs. Setup and limitations are documented in
+[tenant security](docs/tenant-security.md).
+
 ```text
 Client --HTTP--> API ----------> PostgreSQL (durable truth)
                   |                     ^
@@ -47,13 +51,27 @@ Copy the example environment if you want to override the development defaults:
 
 ```bash
 cp .env.example .env
+export CONTROL_PLANE_TOKEN="$(openssl rand -hex 32)"
 ```
 
-Start PostgreSQL and Redis:
+The service token is mandatory; keep the same value for API, coordinator, and
+workers (save it in your local, ignored `.env` for subsequent Compose runs).
+Go commands do not automatically load `.env`. Start PostgreSQL and Redis:
 
 ```bash
 docker compose up -d postgres redis
 ```
+
+Create a local tenant and save the returned API key securely:
+
+```bash
+export DATABASE_URL='postgres://forgequeue:forgequeue@localhost:55432/forgequeue?sslmode=disable'
+go run ./cmd/tenant create --name local --operator
+# Set FORGEQUEUE_API_KEY to the returned api_key, or paste it into the dashboard.
+```
+
+See [tenant security and setup](docs/tenant-security.md) for rotation, quotas,
+Prometheus credentials, and upgrade handling for existing jobs.
 
 Or build and run the complete API/worker pipeline:
 
@@ -82,6 +100,8 @@ Open the built-in operator dashboard at
 submit jobs, track their state, inspect payloads and results, cancel queued
 work, and show live worker health, capacity, and assignment totals. It is
 embedded in the Go API, so there is no separate frontend build or service.
+Connect using your API key. Non-operator keys see only their tenant's jobs;
+fleet health and metrics require an operator key.
 
 Operational telemetry is available through
 [Prometheus](http://localhost:9091) and the provisioned
@@ -107,11 +127,12 @@ Submit and inspect a job:
 
 ```bash
 curl -X POST http://localhost:8080/v1/jobs \
+  -H "Authorization: Bearer $FORGEQUEUE_API_KEY" \
   -H 'Content-Type: application/json' \
   -H 'Idempotency-Key: example-sleep-1' \
   -d '{"type":"sleep","payload":{"duration_ms":1000}}'
 
-curl http://localhost:8080/v1/jobs?status=queued
+curl -H "Authorization: Bearer $FORGEQUEUE_API_KEY" 'http://localhost:8080/v1/jobs?status=queued'
 ```
 
 The worker registers with the coordinator, reports load through heartbeats, and

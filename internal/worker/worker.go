@@ -16,6 +16,7 @@ import (
 
 	"forgequeue/internal/jobs"
 	"forgequeue/internal/queue"
+	"forgequeue/internal/tenant"
 )
 
 type jobRepository interface {
@@ -184,6 +185,9 @@ func (w *Worker) execute(ctx context.Context, job jobs.Job, handler Handler) {
 	jobCtx, cancelJob := context.WithTimeout(context.WithoutCancel(ctx), w.config.JobTimeout)
 	defer cancelJob()
 	executionCtx := withAttempt(jobCtx, job.AttemptCount)
+	if job.TenantID != "" {
+		executionCtx = tenant.WithPrincipal(executionCtx, tenant.Principal{ID: job.TenantID})
+	}
 	var leaseSession *LeaseSession
 	if w.renewer != nil {
 		var err error
@@ -250,7 +254,8 @@ func (w *Worker) execute(ctx context.Context, job jobs.Job, handler Handler) {
 		"duration_ms", time.Since(startedAt).Milliseconds(),
 	}
 	if executionErr != nil {
-		attributes = append(attributes, "error", executionErr)
+		// Handler errors may embed payloads or secrets; details stay in the
+		// tenant-scoped durable result, not shared operational logs.
 		w.logger.Warn("job failed", attributes...)
 		return
 	}

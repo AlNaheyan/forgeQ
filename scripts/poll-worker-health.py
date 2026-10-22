@@ -4,6 +4,7 @@
 import argparse
 import datetime as dt
 import json
+import os
 import time
 import urllib.error
 import urllib.request
@@ -22,7 +23,8 @@ def main():
         while True:
             observed_at = dt.datetime.now(dt.timezone.utc).isoformat()
             try:
-                with urllib.request.urlopen(args.url, timeout=3) as response:
+                request = urllib.request.Request(args.url, headers={"Authorization": "Bearer " + os.environ.get("FORGEQUEUE_API_KEY", "")})
+                with urllib.request.urlopen(request, timeout=3) as response:
                     body = response.read().decode("utf-8", errors="replace")
                     try:
                         snapshot = json.loads(body)

@@ -2392,7 +2392,7 @@ tenant isolation, or operational runbooks.
 
 Status: implemented and verified. See [recovery results](recovery-results.md)
 for the isolated test command, measured evidence, guarantees, and limitations.
-Wave 17 is the next productization wave; Kubernetes remains deferred.
+Wave 17 adds tenant safety; Kubernetes remains deferred.
 
 Goal:
 
@@ -2431,6 +2431,10 @@ database. Tests must use isolated, disposable dependencies.
 ---
 
 # WAVE 17 — Tenant Safety and API Security
+
+Status: implemented and verified. See [tenant security](tenant-security.md)
+for key lifecycle, isolation boundaries, atomic quotas, setup, and limitations.
+Wave 18 (production operations and lifecycle) is next.
 
 Goal:
 

@@ -65,6 +65,7 @@ export function submitJob() {
     JSON.stringify({ type: "sleep", payload: { duration_ms: 0 }, max_attempts: 3 }),
     {
       headers: {
+        Authorization: `Bearer ${__ENV.FORGEQUEUE_API_KEY || ""}`,
         "Content-Type": "application/json",
         "Idempotency-Key": `${runID}-${sequence}`,
       },

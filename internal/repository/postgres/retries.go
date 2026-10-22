@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"forgequeue/internal/jobs"
+	"forgequeue/internal/tenant"
 )
 
 // StartAttempt atomically starts a leased job and records the corresponding
@@ -199,7 +200,25 @@ func (r *JobRepository) FailAttempt(
 // erasing attempt history. If its budget was exhausted, it grants exactly one
 // additional attempt by raising max_attempts to attempt_count+1.
 func (r *JobRepository) RetryDeadLetter(ctx context.Context, id string) (jobs.Job, error) {
-	job, err := scanJob(r.db.QueryRowContext(ctx, `
+	current, err := r.GetJob(ctx, id)
+	if err != nil {
+		return jobs.Job{}, err
+	}
+	if current.Status != jobs.StatusDeadLetter {
+		return jobs.Job{}, jobs.ErrInvalidTransition
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return jobs.Job{}, err
+	}
+	defer tx.Rollback()
+	if err := lockTenant(ctx, tx, current.TenantID); err != nil {
+		return jobs.Job{}, err
+	}
+	if err := admitTenant(ctx, tx, current.TenantID, len(current.Payload)); err != nil {
+		return jobs.Job{}, err
+	}
+	job, err := scanJob(tx.QueryRowContext(ctx, `
 		UPDATE jobs
 		SET status = $1,
 			max_attempts = GREATEST(max_attempts, attempt_count + 1),
@@ -209,17 +228,21 @@ func (r *JobRepository) RetryDeadLetter(ctx context.Context, id string) (jobs.Jo
 			result = NULL,
 			last_error = NULL,
 			updated_at = clock_timestamp()
-		WHERE id = $2 AND status = $3
+		WHERE id = $2 AND status = $3 AND ($4::uuid IS NULL OR tenant_id=$4)
 		RETURNING `+jobColumns,
-		jobs.StatusQueued, id, jobs.StatusDeadLetter,
+		jobs.StatusQueued, id, jobs.StatusDeadLetter, tenant.Scope(ctx),
 	))
 	if err == nil {
+		if err := tx.Commit(); err != nil {
+			return jobs.Job{}, err
+		}
 		return job, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return jobs.Job{}, fmt.Errorf("retry dead-lettered job: %w", err)
 	}
 
+	_ = tx.Rollback()
 	current, getErr := r.GetJob(ctx, id)
 	if getErr != nil {
 		return jobs.Job{}, getErr

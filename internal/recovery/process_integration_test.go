@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"forgequeue/internal/jobs"
+	"forgequeue/internal/tenant"
 	"forgequeue/proto/workerpb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -30,10 +31,20 @@ import (
 // containers. Run through scripts/test-recovery.sh, never a development stack.
 func TestRecoveryProcessAndDependencyOutages(t *testing.T) {
 	f := setup(t)
+	t.Setenv("CONTROL_PLANE_TOKEN", strings.Repeat("test-only-", 8))
+	rpcAuth, err := tenant.LoadRPCAuth()
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := tenant.NewStore(f.db).Issue(f.ctx, tenant.LegacyID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
 	apiPort, grpcPort, metricsPort := freePort(t), freePort(t), freePort(t)
 	env := serviceEnv(map[string]string{
 		"APP_ENV": "test", "DATABASE_URL": os.Getenv("FORGEQUEUE_TEST_DATABASE_URL"),
-		"REDIS_ADDR": os.Getenv("FORGEQUEUE_TEST_REDIS_ADDR"), "COORDINATOR_ADDR": "127.0.0.1:" + grpcPort,
+		"CONTROL_PLANE_TOKEN": os.Getenv("CONTROL_PLANE_TOKEN"),
+		"REDIS_ADDR":          os.Getenv("FORGEQUEUE_TEST_REDIS_ADDR"), "COORDINATOR_ADDR": "127.0.0.1:" + grpcPort,
 		"HTTP_PORT": apiPort, "GRPC_PORT": grpcPort, "METRICS_PORT": metricsPort,
 		"EVENTS_ENABLED": "false", "DATABASE_TIMEOUT": "300ms", "REDIS_TIMEOUT": "300ms",
 		"HEARTBEAT_INTERVAL": "100ms", "WORKER_TIMEOUT": "1s", "LEASE_DURATION": "5s", "LEASE_RENEW_INTERVAL": "500ms",
@@ -44,7 +55,9 @@ func TestRecoveryProcessAndDependencyOutages(t *testing.T) {
 	base := "http://127.0.0.1:" + apiPort
 	httpClient := &http.Client{Timeout: 2 * time.Second}
 	getStatus := func(path string) int {
-		res, err := httpClient.Get(base + path)
+		req, _ := http.NewRequestWithContext(f.ctx, "GET", base+path, nil)
+		req.Header.Set("Authorization", "Bearer "+credential.Token)
+		res, err := httpClient.Do(req)
 		if err != nil {
 			return 0
 		}
@@ -58,6 +71,7 @@ func TestRecoveryProcessAndDependencyOutages(t *testing.T) {
 			t.Fatal(err)
 		}
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+credential.Token)
 		req.Header.Set("Idempotency-Key", key)
 		res, err := httpClient.Do(req)
 		if err != nil {
@@ -75,7 +89,7 @@ func TestRecoveryProcessAndDependencyOutages(t *testing.T) {
 	api := startService(t, "api", env)
 	eventually(t, "API startup readiness", func() bool { return getStatus("/readyz") == 200 })
 	coord := startService(t, "coordinator", env)
-	conn, err := grpc.NewClient("127.0.0.1:"+grpcPort, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient("127.0.0.1:"+grpcPort, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithPerRPCCredentials(rpcAuth))
 	if err != nil {
 		t.Fatal(err)
 	}
