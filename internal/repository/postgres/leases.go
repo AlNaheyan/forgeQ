@@ -31,6 +31,7 @@ func (r *JobRepository) LeaseJob(
 		UPDATE jobs
 		SET status = $1,
 			lease_owner = $2,
+			lease_generation = lease_generation + 1,
 			lease_expires_at = clock_timestamp() + ($3 * INTERVAL '1 microsecond'),
 			updated_at = clock_timestamp()
 		WHERE id = $4
@@ -51,7 +52,7 @@ func (r *JobRepository) LeaseJob(
 // StartLeasedJob starts one attempt while the caller still owns an unexpired
 // lease. Expiry and ownership are checked by PostgreSQL in the same statement
 // as the transition, closing the check-then-update race with the reaper.
-func (r *JobRepository) StartLeasedJob(ctx context.Context, id, workerID string) (jobs.Job, error) {
+func (r *JobRepository) StartLeasedJob(ctx context.Context, id, workerID string, generation int64) (jobs.Job, error) {
 	job, err := scanJob(r.db.QueryRowContext(ctx, `
 		UPDATE jobs
 		SET status = $1,
@@ -60,9 +61,10 @@ func (r *JobRepository) StartLeasedJob(ctx context.Context, id, workerID string)
 		WHERE id = $2
 			AND status = $3
 			AND lease_owner = $4
+			AND lease_generation = $5 AND $5 > 0
 			AND lease_expires_at > clock_timestamp()
 		RETURNING `+jobColumns,
-		jobs.StatusRunning, id, jobs.StatusLeased, workerID,
+		jobs.StatusRunning, id, jobs.StatusLeased, workerID, generation,
 	))
 	if errors.Is(err, sql.ErrNoRows) {
 		return jobs.Job{}, fmt.Errorf("%w: lease is not active or is owned by another worker", jobs.ErrInvalidTransition)
@@ -80,6 +82,7 @@ func (r *JobRepository) RenewLease(
 	id string,
 	workerID string,
 	duration time.Duration,
+	generation int64,
 ) (jobs.Job, error) {
 	if workerID == "" || duration <= 0 {
 		return jobs.Job{}, fmt.Errorf("%w: worker ID and positive lease duration are required", jobs.ErrInvalidTransition)
@@ -96,9 +99,10 @@ func (r *JobRepository) RenewLease(
 		WHERE id = $2
 			AND status IN ($3, $4)
 			AND lease_owner = $5
+			AND lease_generation = $6 AND $6 > 0
 			AND lease_expires_at > clock_timestamp()
 		RETURNING `+jobColumns,
-		leaseMicroseconds, id, jobs.StatusLeased, jobs.StatusRunning, workerID,
+		leaseMicroseconds, id, jobs.StatusLeased, jobs.StatusRunning, workerID, generation,
 	))
 	if errors.Is(err, sql.ErrNoRows) {
 		return jobs.Job{}, fmt.Errorf("%w: lease is not active or is owned by another worker", jobs.ErrInvalidTransition)
@@ -119,6 +123,7 @@ func (r *JobRepository) FinishLeasedJob(
 	status jobs.Status,
 	result []byte,
 	lastError string,
+	generation int64,
 ) (jobs.Job, error) {
 	if status != jobs.StatusSucceeded && status != jobs.StatusFailed {
 		return jobs.Job{}, fmt.Errorf("%w: running -> %s", jobs.ErrInvalidTransition, status)
@@ -135,9 +140,10 @@ func (r *JobRepository) FinishLeasedJob(
 		WHERE id = $4
 			AND status = $5
 			AND lease_owner = $6
+			AND lease_generation = $7 AND $7 > 0
 			AND lease_expires_at > clock_timestamp()
 		RETURNING `+jobColumns,
-		status, nullableJSON(result), lastError, id, jobs.StatusRunning, workerID,
+		status, nullableJSON(result), lastError, id, jobs.StatusRunning, workerID, generation,
 	))
 	if errors.Is(err, sql.ErrNoRows) {
 		return jobs.Job{}, fmt.Errorf("%w: running lease is not active or is owned by another worker", jobs.ErrInvalidTransition)

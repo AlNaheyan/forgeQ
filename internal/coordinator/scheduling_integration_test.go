@@ -126,7 +126,7 @@ func TestRejectedFailureDoesNotReleaseWorkerCapacity(t *testing.T) {
 
 	assertSchedulingClaim(t, server, "worker-1", "job-a")
 	if _, err := server.FailJob(context.Background(), &workerpb.FailJobRequest{
-		WorkerId: "worker-1", JobId: "job-a", Error: "not started",
+		WorkerId: "worker-1", JobId: "job-a", Error: "not started", LeaseGeneration: 1,
 	}); err == nil {
 		t.Fatal("FailJob on leased job succeeded, want transition error")
 	}

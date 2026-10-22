@@ -17,12 +17,12 @@ import (
 const jobColumns = `
 	id, type, payload, status, priority, attempt_count, max_attempts,
 	scheduled_at, lease_owner, lease_expires_at, idempotency_key,
-	result, last_error, created_at, updated_at`
+	result, last_error, created_at, updated_at, lease_generation`
 
 const joinedJobColumns = `
 	j.id, j.type, j.payload, j.status, j.priority, j.attempt_count, j.max_attempts,
 	j.scheduled_at, j.lease_owner, j.lease_expires_at, j.idempotency_key,
-	j.result, j.last_error, j.created_at, j.updated_at`
+	j.result, j.last_error, j.created_at, j.updated_at, j.lease_generation`
 
 type JobRepository struct {
 	db *sql.DB
@@ -246,6 +246,33 @@ func (r *JobRepository) ListQueuedJobs(ctx context.Context, limit int) ([]jobs.J
 	return result, nil
 }
 
+// ListQueuedJobsPage walks the complete durable ready set without repeatedly
+// visiting only the first priority batch. ID ordering is stable across updates.
+func (r *JobRepository) ListQueuedJobsPage(ctx context.Context, afterID string, limit int) ([]jobs.Job, error) {
+	if limit <= 0 || limit > 5000 {
+		limit = 1000
+	}
+	if afterID == "" {
+		afterID = "00000000-0000-0000-0000-000000000000"
+	}
+	rows, err := r.db.QueryContext(ctx, `SELECT `+jobColumns+`
+		FROM jobs WHERE status = $1 AND scheduled_at <= clock_timestamp() AND id > $2::uuid
+		ORDER BY id LIMIT $3`, jobs.StatusQueued, afterID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list queued page: %w", err)
+	}
+	defer rows.Close()
+	var result []jobs.Job
+	for rows.Next() {
+		job, err := scanJob(rows)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, job)
+	}
+	return result, rows.Err()
+}
+
 // ClaimJob atomically moves a queued job to running and records its next
 // attempt number. Leasing replaces this direct claim in Wave 5.
 func (r *JobRepository) ClaimJob(ctx context.Context, id string) (jobs.Job, error) {
@@ -312,7 +339,7 @@ func scanJob(row scanner) (jobs.Job, error) {
 		&job.ID, &job.Type, &job.Payload, &job.Status, &job.Priority,
 		&job.AttemptCount, &job.MaxAttempts, &job.ScheduledAt, &leaseOwner,
 		&leaseExpiresAt, &idempotencyKey, &result, &lastError,
-		&job.CreatedAt, &job.UpdatedAt,
+		&job.CreatedAt, &job.UpdatedAt, &job.LeaseGeneration,
 	)
 	if err != nil {
 		return jobs.Job{}, err

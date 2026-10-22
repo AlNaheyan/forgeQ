@@ -152,6 +152,12 @@ PostgreSQL outbox. It stays disabled in the default stack; opt in with the
 Compose overlay and see [`docs/event-stream.md`](docs/event-stream.md) for the
 delivery contract and consumer guidance.
 
+Wave 16 adds lease-generation fencing, paginated reconciliation, and an isolated
+failure/recovery suite. Run `make test-recovery` to exercise crashes and
+PostgreSQL/Redis outages using small disposable dependencies. See
+[`docs/recovery-results.md`](docs/recovery-results.md) for guarantees, evidence,
+resource limits, and the coordinated worker/coordinator upgrade requirement.
+
 Run the test suite:
 
 ```bash

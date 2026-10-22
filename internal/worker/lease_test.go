@@ -10,7 +10,7 @@ import (
 
 type leaseRenewalBrokerFunc func(context.Context, string, string) (time.Time, error)
 
-func (f leaseRenewalBrokerFunc) RenewLease(ctx context.Context, workerID, jobID string) (time.Time, error) {
+func (f leaseRenewalBrokerFunc) RenewLease(ctx context.Context, workerID, jobID string, _ int64) (time.Time, error) {
 	return f(ctx, workerID, jobID)
 }
 
@@ -31,7 +31,7 @@ func TestLeaseRenewerRenewsUntilStopped(t *testing.T) {
 		t.Fatalf("NewLeaseRenewer() error = %v", err)
 	}
 
-	session, err := renewer.Start(context.Background(), "worker-1", "job-1")
+	session, err := renewer.Start(context.Background(), "worker-1", "job-1", 1)
 	if err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
@@ -77,7 +77,7 @@ func TestLeaseRenewerCancelsHandlerOnLeaseLoss(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewLeaseRenewer() error = %v", err)
 	}
-	session, err := renewer.Start(context.Background(), "worker-1", "job-1")
+	session, err := renewer.Start(context.Background(), "worker-1", "job-1", 1)
 	if err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
@@ -111,7 +111,7 @@ func TestLeaseRenewerRejectsExpiredRenewal(t *testing.T) {
 		t.Fatalf("NewLeaseRenewer() error = %v", err)
 	}
 	renewer.now = func() time.Time { return time.Unix(100, 0) }
-	session, err := renewer.Start(context.Background(), "worker-1", "job-1")
+	session, err := renewer.Start(context.Background(), "worker-1", "job-1", 1)
 	if err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
@@ -140,7 +140,7 @@ func TestLeaseRenewerParentCancellationStopsInflightRenewal(t *testing.T) {
 		t.Fatalf("NewLeaseRenewer() error = %v", err)
 	}
 	parent, cancel := context.WithCancel(context.Background())
-	session, err := renewer.Start(parent, "worker-1", "job-1")
+	session, err := renewer.Start(parent, "worker-1", "job-1", 1)
 	if err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
@@ -188,7 +188,7 @@ func TestLeaseRenewerValidation(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if _, err := renewer.Start(test.ctx, test.workerID, test.jobID); err == nil {
+			if _, err := renewer.Start(test.ctx, test.workerID, test.jobID, 1); err == nil {
 				t.Fatal("Start() error = nil")
 			}
 		})
@@ -205,7 +205,7 @@ func TestLeaseRenewerStopPreventsFutureCalls(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewLeaseRenewer() error = %v", err)
 	}
-	session, err := renewer.Start(context.Background(), "worker-1", "job-1")
+	session, err := renewer.Start(context.Background(), "worker-1", "job-1", 1)
 	if err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}

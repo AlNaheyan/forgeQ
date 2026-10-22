@@ -6,3 +6,6 @@ bin/
 coverage.out
 *.log
 
+# Generated recovery runs stay local; selected evidence is explicitly committed.
+/artifacts/recovery/
+

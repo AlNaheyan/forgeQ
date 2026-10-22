@@ -5,13 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"forgequeue/internal/jobs"
 )
 
 type queuedJobRepository interface {
-	ListQueuedJobs(context.Context, int) ([]jobs.Job, error)
+	ListQueuedJobsPage(context.Context, string, int) ([]jobs.Job, error)
 }
 
 type Reconciler struct {
@@ -19,6 +20,8 @@ type Reconciler struct {
 	queue      Queue
 	logger     *slog.Logger
 	batchSize  int
+	mu         sync.Mutex
+	afterID    string
 }
 
 func NewReconciler(repository queuedJobRepository, queue Queue, logger *slog.Logger) *Reconciler {
@@ -46,9 +49,18 @@ func (r *Reconciler) Run(ctx context.Context, interval time.Duration) {
 }
 
 func (r *Reconciler) ReconcileOnce(ctx context.Context) (int, error) {
-	queuedJobs, err := r.repository.ListQueuedJobs(ctx, r.batchSize)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	queuedJobs, err := r.repository.ListQueuedJobsPage(ctx, r.afterID, r.batchSize)
 	if err != nil {
 		return 0, fmt.Errorf("list durable queued jobs: %w", err)
+	}
+	// A bounded page per tick guarantees progress beyond already-present jobs.
+	// New jobs behind the cursor and failed enqueues are retried on the next sweep.
+	if len(queuedJobs) < r.batchSize {
+		r.afterID = ""
+	} else {
+		r.afterID = queuedJobs[len(queuedJobs)-1].ID
 	}
 
 	restored := 0

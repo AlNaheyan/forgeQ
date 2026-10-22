@@ -37,7 +37,7 @@ func TestGRPCBrokerRenewsLease(t *testing.T) {
 	wantExpiry := time.Now().Add(time.Minute).UTC().Truncate(time.Microsecond)
 	client := &renewalCoordinatorClient{}
 	client.renew = func(request *workerpb.RenewLeaseRequest) (*workerpb.RenewLeaseResponse, error) {
-		if request.GetWorkerId() != "worker-1" || request.GetJobId() != "job-1" {
+		if request.GetWorkerId() != "worker-1" || request.GetJobId() != "job-1" || request.GetLeaseGeneration() != 7 {
 			t.Fatalf("renew request = %+v", request)
 		}
 		return &workerpb.RenewLeaseResponse{LeaseExpiresAt: timestamppb.New(wantExpiry)}, nil
@@ -47,7 +47,7 @@ func TestGRPCBrokerRenewsLease(t *testing.T) {
 		t.Fatalf("NewGRPCBroker: %v", err)
 	}
 
-	expiresAt, err := broker.RenewLease(context.Background(), "worker-1", "job-1")
+	expiresAt, err := broker.RenewLease(context.Background(), "worker-1", "job-1", 7)
 	if err != nil {
 		t.Fatalf("RenewLease: %v", err)
 	}
@@ -64,14 +64,14 @@ func TestGRPCBrokerRejectsMissingLeaseExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewGRPCBroker: %v", err)
 	}
-	if _, err := broker.RenewLease(context.Background(), "worker-1", "job-1"); err == nil {
+	if _, err := broker.RenewLease(context.Background(), "worker-1", "job-1", 1); err == nil {
 		t.Fatal("RenewLease error = nil, want missing expiry error")
 	}
 }
 
 func TestGRPCBrokerPassesFailureClassification(t *testing.T) {
 	client := &renewalCoordinatorClient{fail: func(request *workerpb.FailJobRequest) (*workerpb.FailJobResponse, error) {
-		if request.GetWorkerId() != "worker-1" || request.GetJobId() != "job-1" || request.GetError() != "boom" || request.GetRetryable() {
+		if request.GetWorkerId() != "worker-1" || request.GetJobId() != "job-1" || request.GetError() != "boom" || request.GetRetryable() || request.GetLeaseGeneration() != 7 {
 			t.Fatalf("fail request = %+v", request)
 		}
 		return &workerpb.FailJobResponse{}, nil
@@ -80,7 +80,7 @@ func TestGRPCBrokerPassesFailureClassification(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewGRPCBroker: %v", err)
 	}
-	if err := broker.FailJob(context.Background(), "worker-1", "job-1", "boom", false); err != nil {
+	if err := broker.FailJob(context.Background(), "worker-1", "job-1", "boom", false, 7); err != nil {
 		t.Fatalf("FailJob: %v", err)
 	}
 }

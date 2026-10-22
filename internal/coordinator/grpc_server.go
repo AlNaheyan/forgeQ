@@ -24,10 +24,10 @@ import (
 type jobRepository interface {
 	GetJob(context.Context, string) (jobs.Job, error)
 	LeaseJob(context.Context, string, string, time.Duration) (jobs.Job, error)
-	StartAttempt(context.Context, string, string) (jobs.Job, error)
-	RenewLease(context.Context, string, string, time.Duration) (jobs.Job, error)
-	SucceedAttempt(context.Context, string, string, []byte) (jobs.Job, error)
-	FailAttempt(context.Context, string, string, string, bool, time.Time) (jobs.Job, error)
+	StartAttempt(context.Context, string, string, int64) (jobs.Job, error)
+	RenewLease(context.Context, string, string, time.Duration, int64) (jobs.Job, error)
+	SucceedAttempt(context.Context, string, string, []byte, int64) (jobs.Job, error)
+	FailAttempt(context.Context, string, string, string, bool, time.Time, int64) (jobs.Job, error)
 }
 
 type jobQueue interface {
@@ -260,7 +260,7 @@ func (s *GRPCServer) StartJob(ctx context.Context, request *workerpb.StartJobReq
 	if request == nil || request.GetWorkerId() == "" || request.GetJobId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "worker_id and job_id are required")
 	}
-	job, err := s.repository.StartAttempt(ctx, request.GetJobId(), request.GetWorkerId())
+	job, err := s.repository.StartAttempt(ctx, request.GetJobId(), request.GetWorkerId(), request.GetLeaseGeneration())
 	if err != nil {
 		return nil, repositoryStatusError(err)
 	}
@@ -282,7 +282,7 @@ func (s *GRPCServer) CompleteJob(ctx context.Context, request *workerpb.Complete
 		return nil, status.Error(codes.InvalidArgument, "result_json must contain valid JSON")
 	}
 	current, _ := s.repository.GetJob(ctx, request.GetJobId())
-	job, err := s.repository.SucceedAttempt(ctx, request.GetJobId(), request.GetWorkerId(), request.GetResultJson())
+	job, err := s.repository.SucceedAttempt(ctx, request.GetJobId(), request.GetWorkerId(), request.GetResultJson(), request.GetLeaseGeneration())
 	if err != nil {
 		return nil, repositoryStatusError(err)
 	}
@@ -307,7 +307,7 @@ func (s *GRPCServer) FailJob(ctx context.Context, request *workerpb.FailJobReque
 	if request.GetRetryable() {
 		retryAt = s.retryPolicy.DueAt(time.Now(), current.AttemptCount)
 	}
-	job, err := s.repository.FailAttempt(ctx, request.GetJobId(), request.GetWorkerId(), request.GetError(), request.GetRetryable(), retryAt)
+	job, err := s.repository.FailAttempt(ctx, request.GetJobId(), request.GetWorkerId(), request.GetError(), request.GetRetryable(), retryAt, request.GetLeaseGeneration())
 	if err != nil {
 		return nil, repositoryStatusError(err)
 	}
@@ -426,7 +426,7 @@ func (s *GRPCServer) RenewLease(ctx context.Context, request *workerpb.RenewLeas
 	if request == nil || request.GetWorkerId() == "" || request.GetJobId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "worker_id and job_id are required")
 	}
-	job, err := s.repository.RenewLease(ctx, request.GetJobId(), request.GetWorkerId(), s.leaseDuration)
+	job, err := s.repository.RenewLease(ctx, request.GetJobId(), request.GetWorkerId(), s.leaseDuration, request.GetLeaseGeneration())
 	if err != nil {
 		return nil, repositoryStatusError(err)
 	}
@@ -490,20 +490,21 @@ func healthToProto(health Health) workerpb.WorkerHealth {
 
 func jobToProto(job jobs.Job) *workerpb.Job {
 	result := &workerpb.Job{
-		Id:             job.ID,
-		Type:           job.Type,
-		PayloadJson:    append([]byte(nil), job.Payload...),
-		Status:         statusToProto(job.Status),
-		AttemptCount:   int32(job.AttemptCount),
-		MaxAttempts:    int32(job.MaxAttempts),
-		Priority:       int32(job.Priority),
-		ScheduledAt:    timestamppb.New(job.ScheduledAt),
-		LeaseOwner:     job.LeaseOwner,
-		IdempotencyKey: job.IdempotencyKey,
-		ResultJson:     append([]byte(nil), job.Result...),
-		LastError:      job.LastError,
-		CreatedAt:      timestamppb.New(job.CreatedAt),
-		UpdatedAt:      timestamppb.New(job.UpdatedAt),
+		Id:              job.ID,
+		Type:            job.Type,
+		PayloadJson:     append([]byte(nil), job.Payload...),
+		Status:          statusToProto(job.Status),
+		AttemptCount:    int32(job.AttemptCount),
+		MaxAttempts:     int32(job.MaxAttempts),
+		Priority:        int32(job.Priority),
+		ScheduledAt:     timestamppb.New(job.ScheduledAt),
+		LeaseOwner:      job.LeaseOwner,
+		LeaseGeneration: job.LeaseGeneration,
+		IdempotencyKey:  job.IdempotencyKey,
+		ResultJson:      append([]byte(nil), job.Result...),
+		LastError:       job.LastError,
+		CreatedAt:       timestamppb.New(job.CreatedAt),
+		UpdatedAt:       timestamppb.New(job.UpdatedAt),
 	}
 	if job.LeaseExpiresAt != nil {
 		result.LeaseExpiresAt = timestamppb.New(*job.LeaseExpiresAt)

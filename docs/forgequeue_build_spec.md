@@ -2337,9 +2337,27 @@ Kafka can become:
 
 Do not replace Postgres as source of truth initially.
 
+Architecture guardrails for this wave and later product work:
+
+- PostgreSQL remains authoritative for job state, attempts, leases, retries,
+  idempotency, and tenant ownership.
+- Redis is a disposable queue accelerator/hint. Correctness and recovery must
+  not depend on a Redis entry surviving.
+- Kafka is an optional durable event integration stream, not a second job
+  authority or a replacement for the transactional job state.
+- Replacing PostgreSQL as the source of truth requires a separate architecture
+  proposal, migration plan, and recovery proof; do not do it as part of routine
+  productization.
+
 ---
 
 # WAVE 15 — Optional Kubernetes
+
+This is an optional deployment target, not a prerequisite for a usable product.
+Defer it until Waves 16–18 establish recovery behavior, tenant boundaries, and
+operational practices. The first supported product deployment may remain a
+single-host Docker Compose deployment if its limits and recovery procedures are
+documented.
 
 Goal:
 
@@ -2363,6 +2381,164 @@ liveness probes
 resource requests
 resource limits
 horizontal worker scaling
+```
+
+Do not use Kubernetes as a substitute for application-level recovery tests,
+tenant isolation, or operational runbooks.
+
+---
+
+# WAVE 16 — Reliability and Recovery Proof
+
+Status: implemented and verified. See [recovery results](recovery-results.md)
+for the isolated test command, measured evidence, guarantees, and limitations.
+Wave 17 is the next productization wave; Kubernetes remains deferred.
+
+Goal:
+
+Make the PostgreSQL-authoritative, Redis-accelerated design demonstrably
+recoverable under component failure and ambiguous delivery.
+
+Tickets:
+
+```text
+16.1 Verify Redis is only a hint: lose/restart Redis and prove queued and
+     retry-due PostgreSQL jobs are rediscovered without loss or duplication
+     beyond the documented at-least-once execution contract.
+16.2 Exercise PostgreSQL, API, and coordinator outages/restarts; define and
+     verify startup readiness, dependency recovery, and job visibility.
+16.3 Inject worker failure at claim, handler side-effect, and acknowledgment
+     boundaries; prove lease recovery and document duplicate-execution cases.
+16.4 Add fencing or equivalent stale-worker protection wherever a worker whose
+     lease expired could otherwise overwrite a newer attempt's state.
+16.5 Add bounded, repeatable recovery integration tests and record observed
+     recovery time, duplicate behavior, and any accepted data-loss boundary.
+```
+
+Acceptance criteria:
+
+```text
+PostgreSQL remains the source of truth
+Redis can be restarted or emptied without permanently stranding durable jobs
+stale workers cannot complete or mutate a newer lease/attempt
+recovery assertions are automated and run against isolated test dependencies
+delivery and side-effect guarantees are documented without claiming exactly once
+```
+
+Do not run destructive failure experiments against a user's or production
+database. Tests must use isolated, disposable dependencies.
+
+---
+
+# WAVE 17 — Tenant Safety and API Security
+
+Goal:
+
+Support multiple users safely, with authentication and enforceable tenant
+boundaries across job, worker, and operational APIs.
+
+Tickets:
+
+```text
+17.1 Define tenant and credential lifecycle, including key creation, rotation,
+     revocation, and secure storage of credential verifiers.
+17.2 Authenticate API requests and associate each request with one tenant.
+17.3 Scope job reads, cancellation, retry, idempotency keys, and dashboard
+     actions to the authenticated tenant; add cross-tenant denial tests.
+17.4 Add configurable per-tenant submission/rate, queued-job, payload-size, and
+     concurrency limits with clear 401/403/413/429 responses as applicable.
+17.5 Ensure secrets and sensitive payloads are not emitted to logs, metrics,
+     traces, or event records; avoid tenant IDs as unbounded metric labels.
+17.6 Document key handling, tenant isolation, quotas, and API error semantics.
+```
+
+Acceptance criteria:
+
+```text
+unauthenticated requests cannot access protected operations
+tenant A cannot read or mutate tenant B's jobs, idempotency records, or results
+limits are checked atomically enough to hold under concurrent submissions
+security and isolation behavior has automated tests
+the local development workflow has an explicit safe way to create test tenants
+```
+
+Choose the simplest credential model that fits the deployment and document its
+limits. Do not introduce a large identity platform unless a concrete product
+requirement calls for it.
+
+---
+
+# WAVE 18 — Production Operations and Lifecycle
+
+Goal:
+
+Make installation, upgrade, recovery, and ongoing operation understandable
+and repeatable for an operator.
+
+Tickets:
+
+```text
+18.1 Define supported deployment shape and resource assumptions; provide a
+     versioned, reproducible deployment path (Compose first, if appropriate).
+18.2 Document and test PostgreSQL backup and restore, including a restore drill
+     into an isolated environment and verification of recovered jobs.
+18.3 Define retention and cleanup policies for completed jobs, results,
+     idempotency records, event outbox rows, and audit events; implement bounded
+     cleanup with metrics and safe defaults.
+18.4 Establish backward-compatible database migration and application upgrade
+     procedures, including rollback/forward-fix guidance.
+18.5 Add actionable alerts and runbooks for queue age/depth, worker health,
+     retry/dead-letter growth, dependency errors, and event-publisher lag.
+18.6 Verify readiness, shutdown, secret configuration, and resource limits for
+     the supported deployment; document recovery steps for common incidents.
+```
+
+Acceptance criteria:
+
+```text
+a new operator can deploy from documented instructions
+a backup can be restored and validated using a repeatable procedure
+retention is explicit, bounded, observable, and does not delete active work
+alerts identify symptoms and link to practical runbooks
+upgrade steps are exercised against a disposable copy of representative data
+```
+
+Kubernetes may be used as an optional deployment exercise, but Wave 18 must not
+assume it is required for the first real users.
+
+---
+
+# WAVE 19 — Architecture Evidence and Product Demo
+
+Goal:
+
+Present an accurate, reproducible account of the system and its measured
+behavior for users, reviewers, and recruiters.
+
+Tickets:
+
+```text
+19.1 Publish an architecture overview with component boundaries, data
+     ownership, key request/job flows, failure semantics, and tradeoffs.
+19.2 Maintain concise decision records for PostgreSQL authority, Redis hints,
+     Kafka's optional event role, delivery semantics, and deployment scope.
+19.3 Make benchmark commands reproducible and record hardware, OS, versions,
+     worker/API configuration, workload, raw results, throughput, and latency
+     percentiles; never invent or extrapolate results.
+19.4 Link recovery-test evidence and explain what each experiment proves and
+     does not prove.
+19.5 Refresh the README, dashboard screenshots, and a short demo walkthrough
+     from a clean local environment; clearly label optional services/features.
+```
+
+Acceptance criteria:
+
+```text
+architecture and claims match the current implementation
+benchmark results can be rerun with documented commands and modest-machine
+profiles, without requiring an oversized local workload
+screenshots/demo are captured from a working build and contain no secrets
+known limitations and next steps are explicit
 ```
 
 ---
@@ -2722,10 +2898,14 @@ screenshots
 demo video
 ```
 
+Waves 16–19 extend the portfolio into product-readiness work. Kubernetes and
+Kafka remain optional; do not imply either is required for the core guarantees.
+
 Target Waves:
 
 ```text
-0 through 13
+0 through 13 for the core portfolio baseline
+Waves 16–19 for product-readiness claims
 ```
 
 Kafka and Kubernetes are optional extensions.
@@ -2748,6 +2928,10 @@ Do not:
 - skip benchmarks
 - add unnecessary microservices
 - overengineer authentication before core execution works
+- make Kafka a second source of truth without an explicit architecture review
+- treat Redis queue entries as the only durable record of ready work
+- treat Kubernetes deployment as proof of application-level reliability
+- publish unmeasured performance, availability, or recovery claims
 
 ---
 
@@ -2800,7 +2984,19 @@ Wave 14
 Kafka [optional]
 
 Wave 15
-Kubernetes [optional]
+Kubernetes [optional; defer until Waves 16–18]
+
+Wave 16
+Reliability and Recovery Proof
+
+Wave 17
+Tenant Safety and API Security
+
+Wave 18
+Production Operations and Lifecycle
+
+Wave 19
+Architecture Evidence and Product Demo
 ```
 
 ---

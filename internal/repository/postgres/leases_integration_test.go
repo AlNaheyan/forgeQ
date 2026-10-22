@@ -107,10 +107,10 @@ func TestJobRepositoryLeaseLifecycle(t *testing.T) {
 			t.Fatalf("unexpected leased job: %+v", leased)
 		}
 
-		if _, err := repository.StartLeasedJob(ctx, job.ID, "intruder"); !errors.Is(err, jobs.ErrInvalidTransition) {
+		if _, err := repository.StartLeasedJob(ctx, job.ID, "intruder", 1); !errors.Is(err, jobs.ErrInvalidTransition) {
 			t.Fatalf("wrong owner start error = %v, want ErrInvalidTransition", err)
 		}
-		running, err := repository.StartLeasedJob(ctx, job.ID, "owner")
+		running, err := repository.StartLeasedJob(ctx, job.ID, "owner", 1)
 		if err != nil {
 			t.Fatalf("start leased job: %v", err)
 		}
@@ -118,10 +118,10 @@ func TestJobRepositoryLeaseLifecycle(t *testing.T) {
 			t.Fatalf("unexpected running job: %+v", running)
 		}
 
-		if _, err := repository.RenewLease(ctx, job.ID, "intruder", time.Minute); !errors.Is(err, jobs.ErrInvalidTransition) {
+		if _, err := repository.RenewLease(ctx, job.ID, "intruder", time.Minute, 1); !errors.Is(err, jobs.ErrInvalidTransition) {
 			t.Fatalf("wrong owner renewal error = %v, want ErrInvalidTransition", err)
 		}
-		renewed, err := repository.RenewLease(ctx, job.ID, "owner", time.Minute)
+		renewed, err := repository.RenewLease(ctx, job.ID, "owner", time.Minute, 1)
 		if err != nil {
 			t.Fatalf("renew lease: %v", err)
 		}
@@ -129,10 +129,10 @@ func TestJobRepositoryLeaseLifecycle(t *testing.T) {
 			t.Fatalf("renewal did not extend expiry: before=%v after=%v", running.LeaseExpiresAt, renewed.LeaseExpiresAt)
 		}
 
-		if _, err := repository.FinishLeasedJob(ctx, job.ID, "intruder", jobs.StatusSucceeded, []byte(`{"ok":true}`), ""); !errors.Is(err, jobs.ErrInvalidTransition) {
+		if _, err := repository.FinishLeasedJob(ctx, job.ID, "intruder", jobs.StatusSucceeded, []byte(`{"ok":true}`), "", 1); !errors.Is(err, jobs.ErrInvalidTransition) {
 			t.Fatalf("wrong owner finish error = %v, want ErrInvalidTransition", err)
 		}
-		finished, err := repository.FinishLeasedJob(ctx, job.ID, "owner", jobs.StatusSucceeded, []byte(`{"ok":true}`), "")
+		finished, err := repository.FinishLeasedJob(ctx, job.ID, "owner", jobs.StatusSucceeded, []byte(`{"ok":true}`), "", 1)
 		if err != nil {
 			t.Fatalf("finish leased job: %v", err)
 		}
@@ -150,7 +150,7 @@ func TestJobRepositoryLeaseLifecycle(t *testing.T) {
 		if _, err := repository.LeaseJob(ctx, job.ID, "crashed-worker", time.Minute); err != nil {
 			t.Fatalf("lease job: %v", err)
 		}
-		if _, err := repository.StartLeasedJob(ctx, job.ID, "crashed-worker"); err != nil {
+		if _, err := repository.StartLeasedJob(ctx, job.ID, "crashed-worker", 1); err != nil {
 			t.Fatalf("start leased job: %v", err)
 		}
 		if _, err := db.ExecContext(ctx, `
@@ -160,7 +160,7 @@ func TestJobRepositoryLeaseLifecycle(t *testing.T) {
 			t.Fatalf("expire lease: %v", err)
 		}
 
-		if _, err := repository.FinishLeasedJob(ctx, job.ID, "crashed-worker", jobs.StatusSucceeded, []byte(`{"stale":true}`), ""); !errors.Is(err, jobs.ErrInvalidTransition) {
+		if _, err := repository.FinishLeasedJob(ctx, job.ID, "crashed-worker", jobs.StatusSucceeded, []byte(`{"stale":true}`), "", 1); !errors.Is(err, jobs.ErrInvalidTransition) {
 			t.Fatalf("expired completion error = %v, want ErrInvalidTransition", err)
 		}
 		requeued, err := repository.RequeueExpiredLeases(ctx, 10)
@@ -183,7 +183,7 @@ func TestJobRepositoryLeaseLifecycle(t *testing.T) {
 				t.Fatalf("lease job %s: %v", job.ID, err)
 			}
 		}
-		if _, err := repository.StartLeasedJob(ctx, runningJob.ID, "dead-worker"); err != nil {
+		if _, err := repository.StartLeasedJob(ctx, runningJob.ID, "dead-worker", 1); err != nil {
 			t.Fatalf("start leased job: %v", err)
 		}
 		if _, err := db.ExecContext(ctx, `

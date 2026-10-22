@@ -10,9 +10,9 @@ import (
 
 type Broker interface {
 	ClaimJob(context.Context, string, []string) (jobs.Job, error)
-	RenewLease(context.Context, string, string) (time.Time, error)
-	CompleteJob(context.Context, string, string, []byte) error
-	FailJob(context.Context, string, string, string, bool) error
+	RenewLease(context.Context, string, string, int64) (time.Time, error)
+	CompleteJob(context.Context, string, string, []byte, int64) error
+	FailJob(context.Context, string, string, string, bool, int64) error
 }
 
 type LocalBroker struct {
@@ -42,18 +42,18 @@ func (b *LocalBroker) ClaimJob(ctx context.Context, _ string, supportedTypes []s
 	return b.repository.ClaimJob(ctx, jobID)
 }
 
-func (b *LocalBroker) CompleteJob(ctx context.Context, _ string, jobID string, result []byte) error {
+func (b *LocalBroker) CompleteJob(ctx context.Context, _ string, jobID string, result []byte, _ int64) error {
 	_, err := b.repository.FinishJob(ctx, jobID, jobs.StatusSucceeded, result, "")
 	return err
 }
 
 // RenewLease is a no-op for the in-process broker retained by unit tests and
 // local callers. Durable ownership is enforced by the gRPC coordinator path.
-func (b *LocalBroker) RenewLease(context.Context, string, string) (time.Time, error) {
+func (b *LocalBroker) RenewLease(context.Context, string, string, int64) (time.Time, error) {
 	return time.Now().Add(24 * time.Hour), nil
 }
 
-func (b *LocalBroker) FailJob(ctx context.Context, _ string, jobID, failure string, _ bool) error {
+func (b *LocalBroker) FailJob(ctx context.Context, _ string, jobID, failure string, _ bool, _ int64) error {
 	_, err := b.repository.FinishJob(ctx, jobID, jobs.StatusFailed, nil, failure)
 	return err
 }

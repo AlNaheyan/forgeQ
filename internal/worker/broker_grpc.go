@@ -43,8 +43,9 @@ func (b *GRPCBroker) ClaimJob(ctx context.Context, workerID string, supportedTyp
 		return jobs.Job{}, queue.ErrEmpty
 	}
 	started, err := b.client.StartJob(ctx, &workerpb.StartJobRequest{
-		WorkerId: workerID,
-		JobId:    response.GetJob().GetId(),
+		LeaseGeneration: response.GetJob().GetLeaseGeneration(),
+		WorkerId:        workerID,
+		JobId:           response.GetJob().GetId(),
 	})
 	if err != nil {
 		return jobs.Job{}, err
@@ -52,23 +53,25 @@ func (b *GRPCBroker) ClaimJob(ctx context.Context, workerID string, supportedTyp
 	return jobFromProto(started.GetJob())
 }
 
-func (b *GRPCBroker) CompleteJob(ctx context.Context, workerID, jobID string, result []byte) error {
+func (b *GRPCBroker) CompleteJob(ctx context.Context, workerID, jobID string, result []byte, generation int64) error {
 	ctx, cancel := boundedRPCContext(ctx, b.timeout)
 	defer cancel()
 	_, err := b.client.CompleteJob(ctx, &workerpb.CompleteJobRequest{
-		WorkerId:   workerID,
-		JobId:      jobID,
-		ResultJson: append([]byte(nil), result...),
+		LeaseGeneration: generation,
+		WorkerId:        workerID,
+		JobId:           jobID,
+		ResultJson:      append([]byte(nil), result...),
 	})
 	return err
 }
 
-func (b *GRPCBroker) RenewLease(ctx context.Context, workerID, jobID string) (time.Time, error) {
+func (b *GRPCBroker) RenewLease(ctx context.Context, workerID, jobID string, generation int64) (time.Time, error) {
 	ctx, cancel := boundedRPCContext(ctx, b.timeout)
 	defer cancel()
 	response, err := b.client.RenewLease(ctx, &workerpb.RenewLeaseRequest{
-		WorkerId: workerID,
-		JobId:    jobID,
+		LeaseGeneration: generation,
+		WorkerId:        workerID,
+		JobId:           jobID,
 	})
 	if err != nil {
 		return time.Time{}, err
@@ -76,14 +79,15 @@ func (b *GRPCBroker) RenewLease(ctx context.Context, workerID, jobID string) (ti
 	return requiredProtoTime(response.GetLeaseExpiresAt(), "lease_expires_at")
 }
 
-func (b *GRPCBroker) FailJob(ctx context.Context, workerID, jobID, failure string, retryable bool) error {
+func (b *GRPCBroker) FailJob(ctx context.Context, workerID, jobID, failure string, retryable bool, generation int64) error {
 	ctx, cancel := boundedRPCContext(ctx, b.timeout)
 	defer cancel()
 	_, err := b.client.FailJob(ctx, &workerpb.FailJobRequest{
-		WorkerId:  workerID,
-		JobId:     jobID,
-		Error:     failure,
-		Retryable: retryable,
+		LeaseGeneration: generation,
+		WorkerId:        workerID,
+		JobId:           jobID,
+		Error:           failure,
+		Retryable:       retryable,
 	})
 	return err
 }
@@ -115,20 +119,21 @@ func jobFromProto(value *workerpb.Job) (jobs.Job, error) {
 		return jobs.Job{}, err
 	}
 	job := jobs.Job{
-		ID:             value.GetId(),
-		Type:           value.GetType(),
-		Payload:        append(json.RawMessage(nil), value.GetPayloadJson()...),
-		Status:         statusFromProto(value.GetStatus()),
-		Priority:       int(value.GetPriority()),
-		AttemptCount:   int(value.GetAttemptCount()),
-		MaxAttempts:    int(value.GetMaxAttempts()),
-		ScheduledAt:    scheduledAt,
-		LeaseOwner:     value.GetLeaseOwner(),
-		IdempotencyKey: value.GetIdempotencyKey(),
-		Result:         append(json.RawMessage(nil), value.GetResultJson()...),
-		LastError:      value.GetLastError(),
-		CreatedAt:      createdAt,
-		UpdatedAt:      updatedAt,
+		ID:              value.GetId(),
+		Type:            value.GetType(),
+		Payload:         append(json.RawMessage(nil), value.GetPayloadJson()...),
+		Status:          statusFromProto(value.GetStatus()),
+		Priority:        int(value.GetPriority()),
+		AttemptCount:    int(value.GetAttemptCount()),
+		MaxAttempts:     int(value.GetMaxAttempts()),
+		ScheduledAt:     scheduledAt,
+		LeaseOwner:      value.GetLeaseOwner(),
+		LeaseGeneration: value.GetLeaseGeneration(),
+		IdempotencyKey:  value.GetIdempotencyKey(),
+		Result:          append(json.RawMessage(nil), value.GetResultJson()...),
+		LastError:       value.GetLastError(),
+		CreatedAt:       createdAt,
+		UpdatedAt:       updatedAt,
 	}
 	if value.GetLeaseExpiresAt() != nil {
 		leaseExpiry, err := requiredProtoTime(value.GetLeaseExpiresAt(), "lease_expires_at")

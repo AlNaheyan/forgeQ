@@ -23,21 +23,22 @@ const (
 )
 
 type Job struct {
-	ID             string          `json:"job_id"`
-	Type           string          `json:"type"`
-	Payload        json.RawMessage `json:"payload,omitempty"`
-	Status         Status          `json:"status"`
-	Priority       int             `json:"priority"`
-	AttemptCount   int             `json:"attempt_count"`
-	MaxAttempts    int             `json:"max_attempts"`
-	ScheduledAt    time.Time       `json:"scheduled_at"`
-	LeaseOwner     string          `json:"lease_owner,omitempty"`
-	LeaseExpiresAt *time.Time      `json:"lease_expires_at,omitempty"`
-	IdempotencyKey string          `json:"idempotency_key,omitempty"`
-	Result         json.RawMessage `json:"result,omitempty"`
-	LastError      string          `json:"last_error,omitempty"`
-	CreatedAt      time.Time       `json:"created_at"`
-	UpdatedAt      time.Time       `json:"updated_at"`
+	ID              string          `json:"job_id"`
+	Type            string          `json:"type"`
+	Payload         json.RawMessage `json:"payload,omitempty"`
+	Status          Status          `json:"status"`
+	Priority        int             `json:"priority"`
+	AttemptCount    int             `json:"attempt_count"`
+	MaxAttempts     int             `json:"max_attempts"`
+	ScheduledAt     time.Time       `json:"scheduled_at"`
+	LeaseOwner      string          `json:"lease_owner,omitempty"`
+	LeaseGeneration int64           `json:"lease_generation"`
+	LeaseExpiresAt  *time.Time      `json:"lease_expires_at,omitempty"`
+	IdempotencyKey  string          `json:"idempotency_key,omitempty"`
+	Result          json.RawMessage `json:"result,omitempty"`
+	LastError       string          `json:"last_error,omitempty"`
+	CreatedAt       time.Time       `json:"created_at"`
+	UpdatedAt       time.Time       `json:"updated_at"`
 }
 
 type CreateInput struct {

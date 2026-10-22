@@ -163,7 +163,7 @@ func (w *Worker) Run(ctx context.Context) error {
 			<-semaphore
 			w.logger.Error("coordinator returned unsupported job", "job_id", claimed.ID, "job_type", claimed.Type)
 			finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-			_ = w.broker.FailJob(finishCtx, w.config.ID, claimed.ID, "worker has no handler for job type", false)
+			_ = w.broker.FailJob(finishCtx, w.config.ID, claimed.ID, "worker has no handler for job type", false, claimed.LeaseGeneration)
 			cancel()
 			continue
 		}
@@ -187,7 +187,7 @@ func (w *Worker) execute(ctx context.Context, job jobs.Job, handler Handler) {
 	var leaseSession *LeaseSession
 	if w.renewer != nil {
 		var err error
-		leaseSession, err = w.renewer.Start(executionCtx, w.config.ID, job.ID)
+		leaseSession, err = w.renewer.Start(executionCtx, w.config.ID, job.ID, job.LeaseGeneration)
 		if err != nil {
 			w.logger.Error("lease renewal could not start", "job_id", job.ID, "error", err)
 			return
@@ -228,9 +228,9 @@ func (w *Worker) execute(ctx context.Context, job jobs.Job, handler Handler) {
 	defer cancel()
 	var persistErr error
 	if status == jobs.StatusSucceeded {
-		persistErr = w.broker.CompleteJob(finishCtx, w.config.ID, job.ID, encodedResult)
+		persistErr = w.broker.CompleteJob(finishCtx, w.config.ID, job.ID, encodedResult, job.LeaseGeneration)
 	} else {
-		persistErr = w.broker.FailJob(finishCtx, w.config.ID, job.ID, lastError, true)
+		persistErr = w.broker.FailJob(finishCtx, w.config.ID, job.ID, lastError, true, job.LeaseGeneration)
 	}
 	if persistErr != nil {
 		w.logger.Error("job result persistence failed",

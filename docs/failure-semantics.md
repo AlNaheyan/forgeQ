@@ -4,6 +4,13 @@ ForgeQueue provides **at-least-once execution**. It makes durable job state and
 lease ownership safe under concurrency, but it does not promise that a handler
 or its external side effects run only once.
 
+Wave 16 adds a monotonically increasing `lease_generation` to every lease.
+Start, renewal, and terminal updates must present that generation as well as
+the worker ID; PostgreSQL checks both atomically. A delayed request from an old
+lease cannot affect a newer attempt even when the same worker ID is reused.
+See [the recovery report](recovery-results.md) for failure tests, availability
+boundaries, and upgrade requirements.
+
 ## The three common guarantees
 
 ### At-most-once

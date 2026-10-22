@@ -62,10 +62,11 @@ func TestJobRepositoryRetryLifecycle(t *testing.T) {
 	}
 	start := func(t *testing.T, jobID, workerID string) jobs.Job {
 		t.Helper()
-		if _, err := repository.LeaseJob(ctx, jobID, workerID, time.Minute); err != nil {
+		leased, err := repository.LeaseJob(ctx, jobID, workerID, time.Minute)
+		if err != nil {
 			t.Fatalf("lease job: %v", err)
 		}
-		running, err := repository.StartAttempt(ctx, jobID, workerID)
+		running, err := repository.StartAttempt(ctx, jobID, workerID, leased.LeaseGeneration)
 		if err != nil {
 			t.Fatalf("start attempt: %v", err)
 		}
@@ -77,10 +78,10 @@ func TestJobRepositoryRetryLifecycle(t *testing.T) {
 		if _, err := repository.LeaseJob(ctx, job.ID, "owner", time.Minute); err != nil {
 			t.Fatalf("lease job: %v", err)
 		}
-		if _, err := repository.StartAttempt(ctx, job.ID, "intruder"); !errors.Is(err, jobs.ErrInvalidTransition) {
+		if _, err := repository.StartAttempt(ctx, job.ID, "intruder", 1); !errors.Is(err, jobs.ErrInvalidTransition) {
 			t.Fatalf("wrong owner start error = %v, want ErrInvalidTransition", err)
 		}
-		running, err := repository.StartAttempt(ctx, job.ID, "owner")
+		running, err := repository.StartAttempt(ctx, job.ID, "owner", 1)
 		if err != nil {
 			t.Fatalf("start attempt: %v", err)
 		}
@@ -89,10 +90,10 @@ func TestJobRepositoryRetryLifecycle(t *testing.T) {
 		}
 		assertAttempt(t, db, job.ID, 1, "owner", "running", false, "")
 
-		if _, err := repository.SucceedAttempt(ctx, job.ID, "intruder", []byte(`{"ok":true}`)); !errors.Is(err, jobs.ErrInvalidTransition) {
+		if _, err := repository.SucceedAttempt(ctx, job.ID, "intruder", []byte(`{"ok":true}`), 1); !errors.Is(err, jobs.ErrInvalidTransition) {
 			t.Fatalf("wrong owner success error = %v, want ErrInvalidTransition", err)
 		}
-		succeeded, err := repository.SucceedAttempt(ctx, job.ID, "owner", []byte(`{"ok":true}`))
+		succeeded, err := repository.SucceedAttempt(ctx, job.ID, "owner", []byte(`{"ok":true}`), 1)
 		if err != nil {
 			t.Fatalf("succeed attempt: %v", err)
 		}
@@ -113,10 +114,10 @@ func TestJobRepositoryRetryLifecycle(t *testing.T) {
 		start(t, job.ID, "worker-a")
 		retryAt := time.Now().Add(time.Minute).UTC()
 
-		if _, err := repository.FailAttempt(ctx, job.ID, "intruder", "temporary", true, retryAt); !errors.Is(err, jobs.ErrInvalidTransition) {
+		if _, err := repository.FailAttempt(ctx, job.ID, "intruder", "temporary", true, retryAt, 1); !errors.Is(err, jobs.ErrInvalidTransition) {
 			t.Fatalf("wrong owner failure error = %v, want ErrInvalidTransition", err)
 		}
-		waiting, err := repository.FailAttempt(ctx, job.ID, "worker-a", "temporary", true, retryAt)
+		waiting, err := repository.FailAttempt(ctx, job.ID, "worker-a", "temporary", true, retryAt, 1)
 		if err != nil {
 			t.Fatalf("fail attempt: %v", err)
 		}
@@ -154,7 +155,7 @@ func TestJobRepositoryRetryLifecycle(t *testing.T) {
 	t.Run("exhaustion dead letters and manual retry grants one attempt", func(t *testing.T) {
 		job := createJob(t, 2)
 		start(t, job.ID, "worker-a")
-		waiting, err := repository.FailAttempt(ctx, job.ID, "worker-a", "first", true, time.Now().Add(-time.Second))
+		waiting, err := repository.FailAttempt(ctx, job.ID, "worker-a", "first", true, time.Now().Add(-time.Second), 1)
 		if err != nil || waiting.Status != jobs.StatusRetryWait {
 			t.Fatalf("first failure: job=%+v err=%v", waiting, err)
 		}
@@ -162,7 +163,7 @@ func TestJobRepositoryRetryLifecycle(t *testing.T) {
 			t.Fatalf("promote first retry: %v", err)
 		}
 		start(t, job.ID, "worker-b")
-		dead, err := repository.FailAttempt(ctx, job.ID, "worker-b", "second", true, time.Now().Add(time.Minute))
+		dead, err := repository.FailAttempt(ctx, job.ID, "worker-b", "second", true, time.Now().Add(time.Minute), 2)
 		if err != nil {
 			t.Fatalf("exhaust attempt: %v", err)
 		}
@@ -178,7 +179,7 @@ func TestJobRepositoryRetryLifecycle(t *testing.T) {
 			t.Fatalf("manual retry did not preserve history and grant one attempt: %+v", retried)
 		}
 		start(t, job.ID, "worker-c")
-		dead, err = repository.FailAttempt(ctx, job.ID, "worker-c", "permanent", false, time.Time{})
+		dead, err = repository.FailAttempt(ctx, job.ID, "worker-c", "permanent", false, time.Time{}, 3)
 		if err != nil || dead.Status != jobs.StatusDeadLetter || dead.AttemptCount != 3 {
 			t.Fatalf("non-retryable failure: job=%+v err=%v", dead, err)
 		}
@@ -195,10 +196,10 @@ func TestJobRepositoryRetryLifecycle(t *testing.T) {
 			t.Fatalf("expire lease: %v", err)
 		}
 
-		if _, err := repository.FailAttempt(ctx, job.ID, "crashed-worker", "late", true, time.Now()); !errors.Is(err, jobs.ErrInvalidTransition) {
+		if _, err := repository.FailAttempt(ctx, job.ID, "crashed-worker", "late", true, time.Now(), 1); !errors.Is(err, jobs.ErrInvalidTransition) {
 			t.Fatalf("expired failure error = %v, want ErrInvalidTransition", err)
 		}
-		if _, err := repository.SucceedAttempt(ctx, job.ID, "crashed-worker", []byte(`{"late":true}`)); !errors.Is(err, jobs.ErrInvalidTransition) {
+		if _, err := repository.SucceedAttempt(ctx, job.ID, "crashed-worker", []byte(`{"late":true}`), 1); !errors.Is(err, jobs.ErrInvalidTransition) {
 			t.Fatalf("expired success error = %v, want ErrInvalidTransition", err)
 		}
 		recovered, err := repository.RecoverExpiredAttempts(ctx, 10)

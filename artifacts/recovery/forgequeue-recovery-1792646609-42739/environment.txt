@@ -1,0 +1,31 @@
+go version go1.25.0 darwin/arm64
+Darwin arm64
+1f03dd2e3b33da15775a2fe969a25dd1d258d14c
+ Makefile                                           |   6 +-
+ README.md                                          |   6 +
+ docs/failure-semantics.md                          |   7 +
+ docs/forgequeue_build_spec.md                      | 196 ++++++++++++++++++++-
+ internal/coordinator/grpc_server.go                |  45 ++---
+ internal/coordinator/grpc_server_test.go           |  27 +--
+ internal/coordinator/metrics_test.go               |   8 +-
+ .../coordinator/scheduling_integration_test.go     |   2 +-
+ internal/jobs/model.go                             |  31 ++--
+ internal/queue/reconciler.go                       |  16 +-
+ internal/queue/reconciler_test.go                  |  29 ++-
+ internal/repository/postgres/jobs.go               |  33 +++-
+ internal/repository/postgres/leases.go             |  14 +-
+ .../repository/postgres/leases_integration_test.go |  18 +-
+ internal/repository/postgres/retries.go            |  13 +-
+ .../postgres/retries_integration_test.go           |  27 +--
+ internal/worker/broker.go                          |  12 +-
+ internal/worker/broker_grpc.go                     |  61 ++++---
+ internal/worker/broker_grpc_test.go                |  10 +-
+ internal/worker/crash_recovery_integration_test.go |   4 +-
+ internal/worker/idempotency_integration_test.go    |   6 +-
+ internal/worker/lease.go                           |  10 +-
+ internal/worker/lease_test.go                      |  14 +-
+ internal/worker/worker.go                          |   8 +-
+ proto/worker.proto                                 |   5 +
+ proto/workerpb/worker.pb.go                        | 141 ++++++++++-----
+ 26 files changed, 546 insertions(+), 203 deletions(-)
+Explicit loopback ports: PostgreSQL=50028 Redis=50029

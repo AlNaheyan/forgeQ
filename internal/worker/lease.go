@@ -17,7 +17,7 @@ var ErrLeaseLost = errors.New("job lease lost")
 // can be tested and reused independently of claiming and result persistence.
 // Broker can satisfy it by adding a method with this signature.
 type leaseRenewalBroker interface {
-	RenewLease(context.Context, string, string) (time.Time, error)
+	RenewLease(context.Context, string, string, int64) (time.Time, error)
 }
 
 // LeaseRenewer periodically extends one running job lease. A renewal failure
@@ -58,7 +58,7 @@ type LeaseSession struct {
 
 // Start begins renewing a lease after each renewal interval. The existing
 // lease is assumed to be active when Start is called.
-func (r *LeaseRenewer) Start(parent context.Context, workerID, jobID string) (*LeaseSession, error) {
+func (r *LeaseRenewer) Start(parent context.Context, workerID, jobID string, generation int64) (*LeaseSession, error) {
 	if parent == nil {
 		return nil, errors.New("lease parent context is required")
 	}
@@ -74,7 +74,7 @@ func (r *LeaseRenewer) Start(parent context.Context, workerID, jobID string) (*L
 		cancel: cancel,
 		done:   make(chan struct{}),
 	}
-	go r.run(session, workerID, jobID)
+	go r.run(session, workerID, jobID, generation)
 	return session, nil
 }
 
@@ -108,7 +108,7 @@ func (s *LeaseSession) Stop() error {
 	return s.Err()
 }
 
-func (r *LeaseRenewer) run(session *LeaseSession, workerID, jobID string) {
+func (r *LeaseRenewer) run(session *LeaseSession, workerID, jobID string, generation int64) {
 	defer close(session.done)
 
 	ticker := time.NewTicker(r.interval)
@@ -124,7 +124,7 @@ func (r *LeaseRenewer) run(session *LeaseSession, workerID, jobID string) {
 		// Bound every call so a stuck transport cannot outlive the next
 		// renewal opportunity. Stop and parent cancellation also cancel it.
 		renewCtx, cancel := context.WithTimeout(session.ctx, r.interval)
-		expiresAt, err := r.broker.RenewLease(renewCtx, workerID, jobID)
+		expiresAt, err := r.broker.RenewLease(renewCtx, workerID, jobID, generation)
 		cancel()
 		if err != nil {
 			if session.ctx.Err() != nil {

@@ -55,6 +55,7 @@ message Job {
   string last_error = 13;
   google.protobuf.Timestamp created_at = 14;
   google.protobuf.Timestamp updated_at = 15;
+  int64 lease_generation = 16;
 }
 
 message Worker {
@@ -107,6 +108,7 @@ message ClaimJobResponse {
 message StartJobRequest {
   string worker_id = 1;
   string job_id = 2;
+  int64 lease_generation = 3;
 }
 
 message StartJobResponse {
@@ -117,6 +119,7 @@ message CompleteJobRequest {
   string worker_id = 1;
   string job_id = 2;
   bytes result_json = 3;
+  int64 lease_generation = 4;
 }
 
 message CompleteJobResponse {
@@ -130,6 +133,7 @@ message FailJobRequest {
   // retryable allows the coordinator to distinguish permanent failures once
   // retry and dead-letter behavior is introduced.
   bool retryable = 4;
+  int64 lease_generation = 5;
 }
 
 message FailJobResponse {
@@ -139,6 +143,7 @@ message FailJobResponse {
 message RenewLeaseRequest {
   string worker_id = 1;
   string job_id = 2;
+  int64 lease_generation = 3;
 }
 
 message RenewLeaseResponse {

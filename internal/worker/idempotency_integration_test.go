@@ -159,7 +159,7 @@ func TestIdempotentHandlerExecutesSideEffectOnceAfterLostCompletion(t *testing.T
 	if err != nil || claimed.GetJob().GetId() != jobID {
 		t.Fatalf("worker A claim: response=%v err=%v", claimed, err)
 	}
-	if _, err := client.StartJob(ctx, &workerpb.StartJobRequest{WorkerId: "worker-a", JobId: jobID}); err != nil {
+	if _, err := client.StartJob(ctx, &workerpb.StartJobRequest{WorkerId: "worker-a", JobId: jobID, LeaseGeneration: 1}); err != nil {
 		t.Fatalf("worker A start: %v", err)
 	}
 	firstResult, err := (idempotentSideEffectHandler{executor: idempotency.NewExecutor(db)}).Execute(ctx, payload)
@@ -197,7 +197,7 @@ func TestIdempotentHandlerExecutesSideEffectOnceAfterLostCompletion(t *testing.T
 	if err != nil || reclaimed.GetJob().GetId() != jobID {
 		t.Fatalf("worker B claim: response=%v err=%v", reclaimed, err)
 	}
-	if _, err := client.StartJob(ctx, &workerpb.StartJobRequest{WorkerId: "worker-b", JobId: jobID}); err != nil {
+	if _, err := client.StartJob(ctx, &workerpb.StartJobRequest{WorkerId: "worker-b", JobId: jobID, LeaseGeneration: 2}); err != nil {
 		t.Fatalf("worker B start: %v", err)
 	}
 	secondResult, err := (idempotentSideEffectHandler{executor: idempotency.NewExecutor(db)}).Execute(ctx, payload)
@@ -208,7 +208,7 @@ func TestIdempotentHandlerExecutesSideEffectOnceAfterLostCompletion(t *testing.T
 		t.Fatal("worker B repeated an already committed side effect")
 	}
 	if _, err := client.CompleteJob(ctx, &workerpb.CompleteJobRequest{
-		WorkerId: "worker-b", JobId: jobID, ResultJson: []byte(`{"deduplicated":true}`),
+		WorkerId: "worker-b", JobId: jobID, ResultJson: []byte(`{"deduplicated":true}`), LeaseGeneration: 2,
 	}); err != nil {
 		t.Fatalf("worker B complete: %v", err)
 	}

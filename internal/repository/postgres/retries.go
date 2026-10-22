@@ -15,7 +15,7 @@ import (
 // StartAttempt atomically starts a leased job and records the corresponding
 // attempt. Any unfinished attempt left by a previously expired lease is closed
 // as expired before the new attempt is inserted.
-func (r *JobRepository) StartAttempt(ctx context.Context, id, workerID string) (jobs.Job, error) {
+func (r *JobRepository) StartAttempt(ctx context.Context, id, workerID string, generation int64) (jobs.Job, error) {
 	attemptID, err := newAttemptID()
 	if err != nil {
 		return jobs.Job{}, fmt.Errorf("generate attempt ID: %w", err)
@@ -30,6 +30,7 @@ func (r *JobRepository) StartAttempt(ctx context.Context, id, workerID string) (
 			WHERE id = $2
 				AND status = $3
 				AND lease_owner = $4
+				AND lease_generation = $6 AND $6 > 0
 				AND lease_expires_at > clock_timestamp()
 			RETURNING *
 		), expired_attempts AS (
@@ -52,7 +53,7 @@ func (r *JobRepository) StartAttempt(ctx context.Context, id, workerID string) (
 		SELECT `+joinedJobColumns+`
 		FROM started AS j
 		JOIN inserted_attempt AS a ON a.job_id = j.id`,
-		jobs.StatusRunning, id, jobs.StatusLeased, workerID, attemptID,
+		jobs.StatusRunning, id, jobs.StatusLeased, workerID, attemptID, generation,
 	))
 	if errors.Is(err, sql.ErrNoRows) {
 		return jobs.Job{}, fmt.Errorf("%w: lease is not active or is owned by another worker", jobs.ErrInvalidTransition)
@@ -70,6 +71,7 @@ func (r *JobRepository) SucceedAttempt(
 	id string,
 	workerID string,
 	result []byte,
+	generation int64,
 ) (jobs.Job, error) {
 	job, err := scanJob(r.db.QueryRowContext(ctx, `
 		WITH succeeded AS (
@@ -83,6 +85,7 @@ func (r *JobRepository) SucceedAttempt(
 			WHERE j.id = $3
 				AND j.status = $4
 				AND j.lease_owner = $5
+				AND j.lease_generation = $6 AND $6 > 0
 				AND j.lease_expires_at > clock_timestamp()
 				AND EXISTS (
 					SELECT 1
@@ -108,7 +111,7 @@ func (r *JobRepository) SucceedAttempt(
 		SELECT `+joinedJobColumns+`
 		FROM succeeded AS j
 		JOIN closed_attempt AS a ON a.job_id = j.id`,
-		jobs.StatusSucceeded, nullableJSON(result), id, jobs.StatusRunning, workerID,
+		jobs.StatusSucceeded, nullableJSON(result), id, jobs.StatusRunning, workerID, generation,
 	))
 	if errors.Is(err, sql.ErrNoRows) {
 		return jobs.Job{}, fmt.Errorf("%w: running attempt is not active or is owned by another worker", jobs.ErrInvalidTransition)
@@ -129,6 +132,7 @@ func (r *JobRepository) FailAttempt(
 	lastError string,
 	retryable bool,
 	retryAt time.Time,
+	generation int64,
 ) (jobs.Job, error) {
 	if retryable && retryAt.IsZero() {
 		return jobs.Job{}, fmt.Errorf("%w: retry time is required", jobs.ErrInvalidTransition)
@@ -153,6 +157,7 @@ func (r *JobRepository) FailAttempt(
 			WHERE j.id = $6
 				AND j.status = $7
 				AND j.lease_owner = $8
+				AND j.lease_generation = $9 AND $9 > 0
 				AND j.lease_expires_at > clock_timestamp()
 				AND EXISTS (
 					SELECT 1
@@ -179,7 +184,7 @@ func (r *JobRepository) FailAttempt(
 		FROM failed AS j
 		JOIN closed_attempt AS a ON a.job_id = j.id`,
 		retryable, jobs.StatusRetryWait, jobs.StatusDeadLetter, retryAt.UTC(),
-		lastError, id, jobs.StatusRunning, workerID,
+		lastError, id, jobs.StatusRunning, workerID, generation,
 	))
 	if errors.Is(err, sql.ErrNoRows) {
 		return jobs.Job{}, fmt.Errorf("%w: running attempt is not active or is owned by another worker", jobs.ErrInvalidTransition)

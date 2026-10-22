@@ -42,16 +42,17 @@ func (r *serverTestRepository) LeaseJob(_ context.Context, id, workerID string, 
 	expiresAt := time.Now().Add(duration)
 	job.Status = jobs.StatusLeased
 	job.LeaseOwner = workerID
+	job.LeaseGeneration++
 	job.LeaseExpiresAt = &expiresAt
 	r.jobs[id] = job
 	return job, nil
 }
 
-func (r *serverTestRepository) StartAttempt(_ context.Context, id, workerID string) (jobs.Job, error) {
+func (r *serverTestRepository) StartAttempt(_ context.Context, id, workerID string, generation int64) (jobs.Job, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	job, ok := r.jobs[id]
-	if !ok || job.Status != jobs.StatusLeased || job.LeaseOwner != workerID || job.LeaseExpiresAt == nil || !job.LeaseExpiresAt.After(time.Now()) {
+	if !ok || job.Status != jobs.StatusLeased || job.LeaseOwner != workerID || generation <= 0 || job.LeaseGeneration != generation || job.LeaseExpiresAt == nil || !job.LeaseExpiresAt.After(time.Now()) {
 		return jobs.Job{}, jobs.ErrClaimConflict
 	}
 	job.Status = jobs.StatusRunning
@@ -60,11 +61,11 @@ func (r *serverTestRepository) StartAttempt(_ context.Context, id, workerID stri
 	return job, nil
 }
 
-func (r *serverTestRepository) RenewLease(_ context.Context, id, workerID string, duration time.Duration) (jobs.Job, error) {
+func (r *serverTestRepository) RenewLease(_ context.Context, id, workerID string, duration time.Duration, generation int64) (jobs.Job, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	job, ok := r.jobs[id]
-	if !ok || job.LeaseOwner != workerID || job.LeaseExpiresAt == nil || !job.LeaseExpiresAt.After(time.Now()) {
+	if !ok || job.LeaseOwner != workerID || generation <= 0 || job.LeaseGeneration != generation || job.LeaseExpiresAt == nil || !job.LeaseExpiresAt.After(time.Now()) {
 		return jobs.Job{}, jobs.ErrClaimConflict
 	}
 	expiresAt := time.Now().Add(duration)
@@ -73,14 +74,14 @@ func (r *serverTestRepository) RenewLease(_ context.Context, id, workerID string
 	return job, nil
 }
 
-func (r *serverTestRepository) SucceedAttempt(_ context.Context, id, workerID string, result []byte) (jobs.Job, error) {
+func (r *serverTestRepository) SucceedAttempt(_ context.Context, id, workerID string, result []byte, generation int64) (jobs.Job, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	job, ok := r.jobs[id]
 	if !ok {
 		return jobs.Job{}, jobs.ErrNotFound
 	}
-	if job.Status != jobs.StatusRunning || job.LeaseOwner != workerID || job.LeaseExpiresAt == nil || !job.LeaseExpiresAt.After(time.Now()) {
+	if job.Status != jobs.StatusRunning || job.LeaseOwner != workerID || generation <= 0 || job.LeaseGeneration != generation || job.LeaseExpiresAt == nil || !job.LeaseExpiresAt.After(time.Now()) {
 		return jobs.Job{}, jobs.ErrInvalidTransition
 	}
 	job.Status = jobs.StatusSucceeded
@@ -92,14 +93,14 @@ func (r *serverTestRepository) SucceedAttempt(_ context.Context, id, workerID st
 	return job, nil
 }
 
-func (r *serverTestRepository) FailAttempt(_ context.Context, id, workerID, lastError string, retryable bool, retryAt time.Time) (jobs.Job, error) {
+func (r *serverTestRepository) FailAttempt(_ context.Context, id, workerID, lastError string, retryable bool, retryAt time.Time, generation int64) (jobs.Job, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	job, ok := r.jobs[id]
 	if !ok {
 		return jobs.Job{}, jobs.ErrNotFound
 	}
-	if job.Status != jobs.StatusRunning || job.LeaseOwner != workerID || job.LeaseExpiresAt == nil || !job.LeaseExpiresAt.After(time.Now()) {
+	if job.Status != jobs.StatusRunning || job.LeaseOwner != workerID || generation <= 0 || job.LeaseGeneration != generation || job.LeaseExpiresAt == nil || !job.LeaseExpiresAt.After(time.Now()) {
 		return jobs.Job{}, jobs.ErrInvalidTransition
 	}
 	if retryable && job.AttemptCount < job.MaxAttempts {
@@ -200,16 +201,16 @@ func TestGRPCServerWorkerAndJobLifecycle(t *testing.T) {
 	if err != nil || claimed.GetJob().GetStatus() != workerpb.JobStatus_JOB_STATUS_LEASED || claimed.GetJob().GetLeaseOwner() != "worker-1" {
 		t.Fatalf("claim: response=%v err=%v", claimed, err)
 	}
-	started, err := server.StartJob(context.Background(), &workerpb.StartJobRequest{WorkerId: "worker-1", JobId: "job-1"})
+	started, err := server.StartJob(context.Background(), &workerpb.StartJobRequest{WorkerId: "worker-1", JobId: "job-1", LeaseGeneration: 1})
 	if err != nil || started.GetJob().GetStatus() != workerpb.JobStatus_JOB_STATUS_RUNNING || started.GetJob().GetAttemptCount() != 1 {
 		t.Fatalf("start: %v", err)
 	}
-	renewed, err := server.RenewLease(context.Background(), &workerpb.RenewLeaseRequest{WorkerId: "worker-1", JobId: "job-1"})
+	renewed, err := server.RenewLease(context.Background(), &workerpb.RenewLeaseRequest{WorkerId: "worker-1", JobId: "job-1", LeaseGeneration: 1})
 	if err != nil || renewed.GetLeaseExpiresAt() == nil {
 		t.Fatalf("renew: response=%v err=%v", renewed, err)
 	}
 	completed, err := server.CompleteJob(context.Background(), &workerpb.CompleteJobRequest{
-		WorkerId: "worker-1", JobId: "job-1", ResultJson: []byte(`{"slept_ms":1}`),
+		WorkerId: "worker-1", JobId: "job-1", ResultJson: []byte(`{"slept_ms":1}`), LeaseGeneration: 1,
 	})
 	if err != nil || completed.GetJob().GetStatus() != workerpb.JobStatus_JOB_STATUS_SUCCEEDED {
 		t.Fatalf("complete: response=%v err=%v", completed, err)
@@ -249,11 +250,11 @@ func TestGRPCServerSchedulesRetryableFailure(t *testing.T) {
 	if _, err := server.ClaimJob(context.Background(), &workerpb.ClaimJobRequest{WorkerId: "worker-1"}); err != nil {
 		t.Fatalf("claim: %v", err)
 	}
-	if _, err := server.StartJob(context.Background(), &workerpb.StartJobRequest{WorkerId: "worker-1", JobId: "job-retry"}); err != nil {
+	if _, err := server.StartJob(context.Background(), &workerpb.StartJobRequest{WorkerId: "worker-1", JobId: "job-retry", LeaseGeneration: 1}); err != nil {
 		t.Fatalf("start: %v", err)
 	}
 	failed, err := server.FailJob(context.Background(), &workerpb.FailJobRequest{
-		WorkerId: "worker-1", JobId: "job-retry", Error: "intentional failure", Retryable: true,
+		WorkerId: "worker-1", JobId: "job-retry", Error: "intentional failure", Retryable: true, LeaseGeneration: 1,
 	})
 	if err != nil {
 		t.Fatalf("fail: %v", err)

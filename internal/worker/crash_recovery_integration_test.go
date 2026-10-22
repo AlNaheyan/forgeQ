@@ -113,7 +113,7 @@ func TestWorkerCrashRecoveryPipeline(t *testing.T) {
 	if err != nil || claimed.GetJob().GetId() != jobID {
 		t.Fatalf("worker A claim: response=%v err=%v", claimed, err)
 	}
-	if _, err := client.StartJob(ctx, &workerpb.StartJobRequest{WorkerId: "worker-a", JobId: jobID}); err != nil {
+	if _, err := client.StartJob(ctx, &workerpb.StartJobRequest{WorkerId: "worker-a", JobId: jobID, LeaseGeneration: 1}); err != nil {
 		t.Fatalf("worker A start: %v", err)
 	}
 	// Worker A now disappears without completing or renewing its lease.
@@ -133,7 +133,7 @@ func TestWorkerCrashRecoveryPipeline(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	if _, err := client.CompleteJob(ctx, &workerpb.CompleteJobRequest{
-		WorkerId: "worker-a", JobId: jobID, ResultJson: []byte(`{"stale":true}`),
+		WorkerId: "worker-a", JobId: jobID, ResultJson: []byte(`{"stale":true}`), LeaseGeneration: 1,
 	}); status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("stale worker completion error = %v, want FailedPrecondition", err)
 	}

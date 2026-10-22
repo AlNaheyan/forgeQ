@@ -45,10 +45,10 @@ func TestGRPCServerRecordsLifecycleMetrics(t *testing.T) {
 	if _, err := server.ClaimJob(ctx, &workerpb.ClaimJobRequest{WorkerId: "worker-observed"}); err != nil {
 		t.Fatalf("claim: %v", err)
 	}
-	if _, err := server.StartJob(ctx, &workerpb.StartJobRequest{WorkerId: "worker-observed", JobId: "observed-job"}); err != nil {
+	if _, err := server.StartJob(ctx, &workerpb.StartJobRequest{WorkerId: "worker-observed", JobId: "observed-job", LeaseGeneration: 1}); err != nil {
 		t.Fatalf("start: %v", err)
 	}
-	if _, err := server.CompleteJob(ctx, &workerpb.CompleteJobRequest{WorkerId: "worker-observed", JobId: "observed-job", ResultJson: []byte(`{}`)}); err != nil {
+	if _, err := server.CompleteJob(ctx, &workerpb.CompleteJobRequest{WorkerId: "worker-observed", JobId: "observed-job", ResultJson: []byte(`{}`), LeaseGeneration: 1}); err != nil {
 		t.Fatalf("complete: %v", err)
 	}
 
@@ -98,11 +98,11 @@ func TestGRPCServerRecordsRetryAndDeadLetterMetrics(t *testing.T) {
 		if err != nil || claimed.GetJob().GetId() != jobID {
 			t.Fatalf("claim %s: response=%v err=%v", jobID, claimed, err)
 		}
-		if _, err := server.StartJob(ctx, &workerpb.StartJobRequest{WorkerId: "worker-observed", JobId: jobID}); err != nil {
+		if _, err := server.StartJob(ctx, &workerpb.StartJobRequest{WorkerId: "worker-observed", JobId: jobID, LeaseGeneration: 1}); err != nil {
 			t.Fatalf("start %s: %v", jobID, err)
 		}
 		if _, err := server.FailJob(ctx, &workerpb.FailJobRequest{
-			WorkerId: "worker-observed", JobId: jobID, Error: "expected", Retryable: true,
+			WorkerId: "worker-observed", JobId: jobID, Error: "expected", Retryable: true, LeaseGeneration: 1,
 		}); err != nil {
 			t.Fatalf("fail %s: %v", jobID, err)
 		}

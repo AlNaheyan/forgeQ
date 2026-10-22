@@ -14,8 +14,33 @@ type reconcileRepository struct {
 	jobs []jobs.Job
 }
 
-func (r reconcileRepository) ListQueuedJobs(context.Context, int) ([]jobs.Job, error) {
-	return r.jobs, nil
+func (r reconcileRepository) ListQueuedJobsPage(_ context.Context, afterID string, limit int) ([]jobs.Job, error) {
+	var result []jobs.Job
+	for _, job := range r.jobs {
+		if job.ID > afterID {
+			result = append(result, job)
+		}
+		if len(result) == limit {
+			break
+		}
+	}
+	return result, nil
+}
+
+func TestReconcilerProgressesPastFullPageAndWraps(t *testing.T) {
+	q := &memoryQueue{items: map[string]bool{"a": true, "b": true}}
+	r := NewReconciler(reconcileRepository{jobs: []jobs.Job{{ID: "a"}, {ID: "b"}, {ID: "c"}}}, q, slog.Default())
+	r.batchSize = 2
+	if n, err := r.ReconcileOnce(context.Background()); n != 0 || err != nil {
+		t.Fatalf("first page: %d %v", n, err)
+	}
+	if n, err := r.ReconcileOnce(context.Background()); n != 1 || err != nil || !q.items["c"] {
+		t.Fatalf("second page: %d %v", n, err)
+	}
+	delete(q.items, "a")
+	if n, err := r.ReconcileOnce(context.Background()); n != 1 || err != nil || !q.items["a"] {
+		t.Fatalf("wrapped page: %d %v", n, err)
+	}
 }
 
 type memoryQueue struct {

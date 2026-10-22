@@ -1,10 +1,14 @@
-.PHONY: build compose-down compose-up fmt test test-integration chaos-worker-crash chaos-redis-restart chaos-coordinator-restart
+.PHONY: build compose-down compose-up fmt test test-integration test-recovery chaos-worker-crash chaos-redis-restart chaos-coordinator-restart
 
 build:
 	go build ./...
 
 test:
 	go test ./...
+
+# Starts only disposable PostgreSQL/Redis, then removes that test stack.
+test-recovery:
+	bash scripts/test-recovery.sh
 
 test-integration:
 	FORGEQUEUE_TEST_DATABASE_URL='postgres://forgequeue:forgequeue@localhost:55432/forgequeue?sslmode=disable' \
