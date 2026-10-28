@@ -1,0 +1,61 @@
+# Explicit overlay for the supported single-host deployment. Paths resolve
+# relative to docker-compose.yml; credentials must be supplied by the operator.
+services:
+  postgres:
+    cpus: 1
+    mem_limit: 512m
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set a random hex database password}
+    restart: unless-stopped
+    stop_grace_period: 30s
+  redis:
+    cpus: 0.5
+    mem_limit: 192m
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "128mb", "--maxmemory-policy", "noeviction"]
+    restart: unless-stopped
+  api:
+    cpus: 0.5
+    mem_limit: 256m
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      CONTROL_PLANE_TOKEN: ${CONTROL_PLANE_TOKEN:?set a random service credential}
+      DATABASE_URL: postgres://forgequeue:${POSTGRES_PASSWORD:?set database password}@postgres:5432/forgequeue?sslmode=disable
+      RETENTION_ENABLED: ${RETENTION_ENABLED:-false}
+      RETENTION_JOB_AGE: ${RETENTION_JOB_AGE:-720h}
+      RETENTION_EVENT_AGE: ${RETENTION_EVENT_AGE:-168h}
+      RETENTION_BATCH: ${RETENTION_BATCH:-100}
+  coordinator:
+    cpus: 0.5
+    mem_limit: 256m
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      CONTROL_PLANE_TOKEN: ${CONTROL_PLANE_TOKEN:?set a random service credential}
+      DATABASE_URL: postgres://forgequeue:${POSTGRES_PASSWORD:?set database password}@postgres:5432/forgequeue?sslmode=disable
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9101/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+  worker:
+    cpus: 0.5
+    mem_limit: 256m
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      CONTROL_PLANE_TOKEN: ${CONTROL_PLANE_TOKEN:?set a random service credential}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+  prometheus:
+    cpus: 0.5
+    mem_limit: 384m
+  grafana:
+    cpus: 0.5
+    mem_limit: 256m
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_AUTH_DISABLE_LOGIN_FORM: "false"
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set a unique Grafana admin password}

@@ -13,7 +13,10 @@ import (
 // avoids duplicate-registration panics in tests and lets Prometheus aggregate
 // the same metric names from the API and coordinator processes.
 type Metrics struct {
-	registry *prometheus.Registry
+	DurableHealth, DurableQueueDepth, OldestReadyAge, OutboxLag, RetentionLastSuccess prometheus.Gauge
+	RetentionDeleted                                                                  *prometheus.CounterVec
+	RetentionErrors                                                                   prometheus.Counter
+	registry                                                                          *prometheus.Registry
 
 	JobsSubmitted          prometheus.Counter
 	JobsStarted            prometheus.Counter
@@ -40,6 +43,13 @@ type Metrics struct {
 func NewMetrics() *Metrics {
 	registry := prometheus.NewRegistry()
 	m := &Metrics{
+		DurableHealth:          prometheus.NewGauge(prometheus.GaugeOpts{Name: "forgequeue_durable_health", Help: "Last durable operational snapshot succeeded (1/0)."}),
+		DurableQueueDepth:      prometheus.NewGauge(prometheus.GaugeOpts{Name: "forgequeue_durable_ready_jobs", Help: "Due queued jobs in PostgreSQL."}),
+		OldestReadyAge:         prometheus.NewGauge(prometheus.GaugeOpts{Name: "forgequeue_oldest_ready_seconds", Help: "Age of oldest due queued job."}),
+		OutboxLag:              prometheus.NewGauge(prometheus.GaugeOpts{Name: "forgequeue_outbox_oldest_pending_seconds", Help: "Age of oldest unpublished event."}),
+		RetentionLastSuccess:   prometheus.NewGauge(prometheus.GaugeOpts{Name: "forgequeue_retention_last_success_timestamp_seconds", Help: "Last committed enabled cleanup tick."}),
+		RetentionDeleted:       prometheus.NewCounterVec(prometheus.CounterOpts{Name: "forgequeue_retention_deleted_total", Help: "Committed retention deletions by bounded parent kind."}, []string{"kind"}),
+		RetentionErrors:        prometheus.NewCounter(prometheus.CounterOpts{Name: "forgequeue_retention_errors_total", Help: "Failed cleanup transactions."}),
 		registry:               registry,
 		JobsSubmitted:          prometheus.NewCounter(prometheus.CounterOpts{Name: "forgequeue_jobs_submitted_total", Help: "Jobs accepted by the API."}),
 		JobsStarted:            prometheus.NewCounter(prometheus.CounterOpts{Name: "forgequeue_jobs_started_total", Help: "Job attempts started by workers."}),
@@ -61,6 +71,7 @@ func NewMetrics() *Metrics {
 		APIRequestDuration:     prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "forgequeue_api_request_duration_seconds", Help: "HTTP API request duration.", Buckets: prometheus.DefBuckets}, []string{"method", "route", "status"}),
 	}
 	registry.MustRegister(
+		m.DurableHealth, m.DurableQueueDepth, m.OldestReadyAge, m.OutboxLag, m.RetentionLastSuccess, m.RetentionDeleted, m.RetentionErrors,
 		m.JobsSubmitted, m.JobsStarted, m.JobsCompleted, m.JobsFailed,
 		m.JobsRetried, m.JobsDeadLetter, m.QueueDepth, m.JobDuration,
 		m.JobQueueWait, m.WorkersRegistered, m.WorkersHealthy,

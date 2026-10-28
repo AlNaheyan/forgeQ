@@ -1,0 +1,510 @@
+?   	forgequeue/cmd/api	[no test files]
+=== RUN   TestDecodeWorkersAcceptsComposeJSONLines
+--- PASS: TestDecodeWorkersAcceptsComposeJSONLines (0.00s)
+=== RUN   TestKillWorkersSelectsDistinctRunningContainers
+--- PASS: TestKillWorkersSelectsDistinctRunningContainers (0.00s)
+=== RUN   TestKillWorkersRefusesToKillAllWhenCountUnavailable
+--- PASS: TestKillWorkersRefusesToKillAllWhenCountUnavailable (0.00s)
+=== RUN   TestRestartServiceRestrictsTargetAndRecordsEvent
+--- PASS: TestRestartServiceRestrictsTargetAndRecordsEvent (0.00s)
+=== RUN   TestKillWorkersReturnsListingError
+--- PASS: TestKillWorkersReturnsListingError (0.00s)
+PASS
+ok  	forgequeue/cmd/chaos	0.169s
+?   	forgequeue/cmd/coordinator	[no test files]
+?   	forgequeue/cmd/loadgen	[no test files]
+?   	forgequeue/cmd/tenant	[no test files]
+?   	forgequeue/cmd/worker	[no test files]
+=== RUN   TestProtectedRoutesRequireCredentials
+2026/10/28 18:37:43 INFO HTTP request completed request_id=9c67740182a1990629ab27d98b6b9e01 method=GET route="GET /v1/workers" status=401 duration_ms=0
+--- PASS: TestProtectedRoutesRequireCredentials (0.00s)
+=== RUN   TestBurstBackpressureReturns429AndKeepsHealthResponsive
+--- PASS: TestBurstBackpressureReturns429AndKeepsHealthResponsive (0.00s)
+=== RUN   TestDashboardRoutes
+--- PASS: TestDashboardRoutes (0.00s)
+=== RUN   TestAPICancelsTimedOutRequestContext
+--- PASS: TestAPICancelsTimedOutRequestContext (0.01s)
+=== RUN   TestCreateJobRejectsOversizedRequestBody
+--- PASS: TestCreateJobRejectsOversizedRequestBody (0.01s)
+=== RUN   TestRetryJobReturnsPersistedQueuedJob
+--- PASS: TestRetryJobReturnsPersistedQueuedJob (0.00s)
+=== RUN   TestRetryJobRejectsNonDeadLetterState
+--- PASS: TestRetryJobRejectsNonDeadLetterState (0.00s)
+=== RUN   TestListWorkersEndpoint
+--- PASS: TestListWorkersEndpoint (0.00s)
+=== RUN   TestJobHTTPFlow
+--- PASS: TestJobHTTPFlow (0.12s)
+PASS
+ok  	forgequeue/internal/api	0.430s
+?   	forgequeue/internal/app	[no test files]
+=== RUN   TestLoadUsesDevelopmentDefaults
+--- PASS: TestLoadUsesDevelopmentDefaults (0.00s)
+=== RUN   TestLoadReadsOverrides
+--- PASS: TestLoadReadsOverrides (0.00s)
+=== RUN   TestLoadRequiresProductionDependencies
+--- PASS: TestLoadRequiresProductionDependencies (0.00s)
+=== RUN   TestLoadRejectsInvalidSettings
+=== RUN   TestLoadRejectsInvalidSettings/empty_value
+=== RUN   TestLoadRejectsInvalidSettings/bad_integer
+=== RUN   TestLoadRejectsInvalidSettings/bad_duration
+=== RUN   TestLoadRejectsInvalidSettings/heartbeat_relationship
+=== RUN   TestLoadRejectsInvalidSettings/lease_relationship
+=== RUN   TestLoadRejectsInvalidSettings/retry_relationship
+=== RUN   TestLoadRejectsInvalidSettings/scheduler_strategy
+=== RUN   TestLoadRejectsInvalidSettings/empty_job_type
+=== RUN   TestLoadRejectsInvalidSettings/invalid_pool_relationship
+=== RUN   TestLoadRejectsInvalidSettings/invalid_event_bool
+=== RUN   TestLoadRejectsInvalidSettings/events_require_brokers
+--- PASS: TestLoadRejectsInvalidSettings (0.00s)
+    --- PASS: TestLoadRejectsInvalidSettings/empty_value (0.00s)
+    --- PASS: TestLoadRejectsInvalidSettings/bad_integer (0.00s)
+    --- PASS: TestLoadRejectsInvalidSettings/bad_duration (0.00s)
+    --- PASS: TestLoadRejectsInvalidSettings/heartbeat_relationship (0.00s)
+    --- PASS: TestLoadRejectsInvalidSettings/lease_relationship (0.00s)
+    --- PASS: TestLoadRejectsInvalidSettings/retry_relationship (0.00s)
+    --- PASS: TestLoadRejectsInvalidSettings/scheduler_strategy (0.00s)
+    --- PASS: TestLoadRejectsInvalidSettings/empty_job_type (0.00s)
+    --- PASS: TestLoadRejectsInvalidSettings/invalid_pool_relationship (0.00s)
+    --- PASS: TestLoadRejectsInvalidSettings/invalid_event_bool (0.00s)
+    --- PASS: TestLoadRejectsInvalidSettings/events_require_brokers (0.00s)
+=== RUN   TestLoadRequiresServiceName
+--- PASS: TestLoadRequiresServiceName (0.00s)
+PASS
+ok  	forgequeue/internal/config	0.157s
+=== RUN   TestGRPCServerWorkerAndJobLifecycle
+--- PASS: TestGRPCServerWorkerAndJobLifecycle (0.00s)
+=== RUN   TestGRPCServerSchedulesRetryableFailure
+--- PASS: TestGRPCServerSchedulesRetryableFailure (0.00s)
+=== RUN   TestGRPCServerRecordsWorkerRegistrationAndLossOnce
+--- PASS: TestGRPCServerRecordsWorkerRegistrationAndLossOnce (0.00s)
+=== RUN   TestGRPCServerRecordsLifecycleMetrics
+--- PASS: TestGRPCServerRecordsLifecycleMetrics (0.00s)
+=== RUN   TestGRPCServerRecordsRetryAndDeadLetterMetrics
+--- PASS: TestGRPCServerRecordsRetryAndDeadLetterMetrics (0.00s)
+=== RUN   TestRecoveryScannerRecoverOnceEnqueuesEveryExpiredJob
+--- PASS: TestRecoveryScannerRecoverOnceEnqueuesEveryExpiredJob (0.00s)
+=== RUN   TestRecoveryScannerRecoverOnceReturnsRepositoryError
+--- PASS: TestRecoveryScannerRecoverOnceReturnsRepositoryError (0.00s)
+=== RUN   TestRecoveryScannerRecoverOnceContinuesAfterEnqueueError
+--- PASS: TestRecoveryScannerRecoverOnceContinuesAfterEnqueueError (0.00s)
+=== RUN   TestRecoveryScannerRunScansImmediatelyAndStopsOnCancellation
+--- PASS: TestRecoveryScannerRunScansImmediatelyAndStopsOnCancellation (0.01s)
+=== RUN   TestRegisterAndGetWorker
+--- PASS: TestRegisterAndGetWorker (0.00s)
+=== RUN   TestRegisterRejectsInvalidInput
+=== RUN   TestRegisterRejectsInvalidInput/empty_ID
+=== RUN   TestRegisterRejectsInvalidInput/padded_ID
+=== RUN   TestRegisterRejectsInvalidInput/zero_concurrency
+=== RUN   TestRegisterRejectsInvalidInput/no_job_types
+=== RUN   TestRegisterRejectsInvalidInput/empty_job_type
+=== RUN   TestRegisterRejectsInvalidInput/padded_job_type
+=== RUN   TestRegisterRejectsInvalidInput/duplicate_job_type
+--- PASS: TestRegisterRejectsInvalidInput (0.00s)
+    --- PASS: TestRegisterRejectsInvalidInput/empty_ID (0.00s)
+    --- PASS: TestRegisterRejectsInvalidInput/padded_ID (0.00s)
+    --- PASS: TestRegisterRejectsInvalidInput/zero_concurrency (0.00s)
+    --- PASS: TestRegisterRejectsInvalidInput/no_job_types (0.00s)
+    --- PASS: TestRegisterRejectsInvalidInput/empty_job_type (0.00s)
+    --- PASS: TestRegisterRejectsInvalidInput/padded_job_type (0.00s)
+    --- PASS: TestRegisterRejectsInvalidInput/duplicate_job_type (0.00s)
+=== RUN   TestHeartbeatUpdatesStateAndHealthTransitions
+--- PASS: TestHeartbeatUpdatesStateAndHealthTransitions (0.00s)
+=== RUN   TestHeartbeatRejectsInvalidInput
+=== RUN   TestHeartbeatRejectsInvalidInput/unknown_worker
+=== RUN   TestHeartbeatRejectsInvalidInput/empty_ID
+=== RUN   TestHeartbeatRejectsInvalidInput/padded_ID
+=== RUN   TestHeartbeatRejectsInvalidInput/negative_jobs
+=== RUN   TestHeartbeatRejectsInvalidInput/jobs_exceed_capacity
+=== RUN   TestHeartbeatRejectsInvalidInput/zero_capacity
+=== RUN   TestHeartbeatRejectsInvalidInput/zero_timestamp
+--- PASS: TestHeartbeatRejectsInvalidInput (0.00s)
+    --- PASS: TestHeartbeatRejectsInvalidInput/unknown_worker (0.00s)
+    --- PASS: TestHeartbeatRejectsInvalidInput/empty_ID (0.00s)
+    --- PASS: TestHeartbeatRejectsInvalidInput/padded_ID (0.00s)
+    --- PASS: TestHeartbeatRejectsInvalidInput/negative_jobs (0.00s)
+    --- PASS: TestHeartbeatRejectsInvalidInput/jobs_exceed_capacity (0.00s)
+    --- PASS: TestHeartbeatRejectsInvalidInput/zero_capacity (0.00s)
+    --- PASS: TestHeartbeatRejectsInvalidInput/zero_timestamp (0.00s)
+=== RUN   TestHeartbeatRejectsOutOfOrderTimestamp
+--- PASS: TestHeartbeatRejectsOutOfOrderTimestamp (0.00s)
+=== RUN   TestListIsDeterministic
+--- PASS: TestListIsDeterministic (0.00s)
+=== RUN   TestReregisterStartsNewSession
+--- PASS: TestReregisterStartsNewSession (0.00s)
+=== RUN   TestTryReserveAndRelease
+--- PASS: TestTryReserveAndRelease (0.00s)
+=== RUN   TestTryReserveRejectsMissingUnhealthyAndFullWorkers
+--- PASS: TestTryReserveRejectsMissingUnhealthyAndFullWorkers (0.00s)
+=== RUN   TestConfirmAssignmentRejectsMissingWorker
+--- PASS: TestConfirmAssignmentRejectsMissingWorker (0.00s)
+=== RUN   TestHeartbeatPreservesConcurrentReservations
+--- PASS: TestHeartbeatPreservesConcurrentReservations (0.00s)
+=== RUN   TestOlderJobReleaseDoesNotEraseNewReservation
+--- PASS: TestOlderJobReleaseDoesNotEraseNewReservation (0.00s)
+=== RUN   TestRollbackReservationRemovesFreshCapacity
+--- PASS: TestRollbackReservationRemovesFreshCapacity (0.00s)
+=== RUN   TestConcurrentReservationsNeverOversubscribe
+--- PASS: TestConcurrentReservationsNeverOversubscribe (0.00s)
+=== RUN   TestRegistryConcurrentAccess
+--- PASS: TestRegistryConcurrentAccess (0.02s)
+=== RUN   TestNewRegistryRejectsInvalidThresholds
+--- PASS: TestNewRegistryRejectsInvalidThresholds (0.00s)
+=== RUN   TestRetryPolicyUsesCappedExponentialBackoff
+--- PASS: TestRetryPolicyUsesCappedExponentialBackoff (0.00s)
+=== RUN   TestRetryPolicyAddsDeterministicJitter
+--- PASS: TestRetryPolicyAddsDeterministicJitter (0.00s)
+=== RUN   TestRetryPolicyCapsDelayAfterJitter
+--- PASS: TestRetryPolicyCapsDelayAfterJitter (0.00s)
+=== RUN   TestRetryPolicyClampsJitterInputs
+--- PASS: TestRetryPolicyClampsJitterInputs (0.00s)
+=== RUN   TestRetryPolicyDefaultsAndDueAt
+--- PASS: TestRetryPolicyDefaultsAndDueAt (0.00s)
+=== RUN   TestRetryPromoterMergesDurableAndRedisCandidates
+--- PASS: TestRetryPromoterMergesDurableAndRedisCandidates (0.00s)
+=== RUN   TestRetryPromoterRepairsMissingRedisHintFromDurableState
+--- PASS: TestRetryPromoterRepairsMissingRedisHintFromDurableState (0.00s)
+=== RUN   TestRetryPromoterIgnoresStaleRedisIDsAndContinues
+--- PASS: TestRetryPromoterIgnoresStaleRedisIDsAndContinues (0.00s)
+=== RUN   TestRetryPromoterUsesEitherSourceWhenTheOtherFails
+=== RUN   TestRetryPromoterUsesEitherSourceWhenTheOtherFails/redis_fails
+=== RUN   TestRetryPromoterUsesEitherSourceWhenTheOtherFails/database_list_fails
+--- PASS: TestRetryPromoterUsesEitherSourceWhenTheOtherFails (0.00s)
+    --- PASS: TestRetryPromoterUsesEitherSourceWhenTheOtherFails/redis_fails (0.00s)
+    --- PASS: TestRetryPromoterUsesEitherSourceWhenTheOtherFails/database_list_fails (0.00s)
+=== RUN   TestRetryPromoterContinuesAfterIndependentFailures
+--- PASS: TestRetryPromoterContinuesAfterIndependentFailures (0.00s)
+=== RUN   TestRetryPromoterRejectsInvalidRepositoryResult
+--- PASS: TestRetryPromoterRejectsInvalidRepositoryResult (0.00s)
+=== RUN   TestRetryPromoterHonorsCancellation
+--- PASS: TestRetryPromoterHonorsCancellation (0.00s)
+=== RUN   TestRetryPromoterRunScansImmediatelyAndStops
+--- PASS: TestRetryPromoterRunScansImmediatelyAndStops (0.01s)
+=== RUN   TestSchedulersRejectWhenNoWorkerIsEligible
+=== PAUSE TestSchedulersRejectWhenNoWorkerIsEligible
+=== RUN   TestRoundRobinIsDeterministicAndDoesNotMutateInput
+=== PAUSE TestRoundRobinIsDeterministicAndDoesNotMutateInput
+=== RUN   TestRoundRobinConcurrentSelectionsAreEven
+=== PAUSE TestRoundRobinConcurrentSelectionsAreEven
+=== RUN   TestLeastLoadedUsesFreeCapacityAndWorkerIDTieBreak
+=== PAUSE TestLeastLoadedUsesFreeCapacityAndWorkerIDTieBreak
+=== RUN   TestWeightedCapacityUsesCapacityRangesInStableOrder
+=== PAUSE TestWeightedCapacityUsesCapacityRangesInStableOrder
+=== RUN   TestWeightedCapacityApproximatesCapacityRatio
+=== PAUSE TestWeightedCapacityApproximatesCapacityRatio
+=== RUN   TestWeightedCapacityZeroValueIsUsable
+=== PAUSE TestWeightedCapacityZeroValueIsUsable
+=== RUN   TestWeightedCapacityRejectsBrokenRandomSource
+=== PAUSE TestWeightedCapacityRejectsBrokenRandomSource
+=== RUN   TestEligibilityReturnsIndependentSortedSlice
+=== PAUSE TestEligibilityReturnsIndependentSortedSlice
+=== RUN   TestClaimJobRoutesByCapabilityAndKeepsStickyOffer
+--- PASS: TestClaimJobRoutesByCapabilityAndKeepsStickyOffer (0.00s)
+=== RUN   TestConcurrentClaimsDoNotOversubscribeWorker
+--- PASS: TestConcurrentClaimsDoNotOversubscribeWorker (0.00s)
+=== RUN   TestRejectedFailureDoesNotReleaseWorkerCapacity
+--- PASS: TestRejectedFailureDoesNotReleaseWorkerCapacity (0.00s)
+=== RUN   TestRoundRobinOffersDistributeClaimsAcrossWorkers
+--- PASS: TestRoundRobinOffersDistributeClaimsAcrossWorkers (0.00s)
+=== RUN   TestClaimDefersSaturatedTenant
+--- PASS: TestClaimDefersSaturatedTenant (0.00s)
+=== CONT  TestSchedulersRejectWhenNoWorkerIsEligible
+=== CONT  TestWeightedCapacityApproximatesCapacityRatio
+=== RUN   TestSchedulersRejectWhenNoWorkerIsEligible/least_loaded
+=== PAUSE TestSchedulersRejectWhenNoWorkerIsEligible/least_loaded
+=== RUN   TestSchedulersRejectWhenNoWorkerIsEligible/weighted_capacity
+=== PAUSE TestSchedulersRejectWhenNoWorkerIsEligible/weighted_capacity
+=== RUN   TestSchedulersRejectWhenNoWorkerIsEligible/round_robin
+=== PAUSE TestSchedulersRejectWhenNoWorkerIsEligible/round_robin
+=== CONT  TestSchedulersRejectWhenNoWorkerIsEligible/least_loaded
+=== CONT  TestWeightedCapacityUsesCapacityRangesInStableOrder
+--- PASS: TestWeightedCapacityUsesCapacityRangesInStableOrder (0.00s)
+=== CONT  TestLeastLoadedUsesFreeCapacityAndWorkerIDTieBreak
+=== RUN   TestLeastLoadedUsesFreeCapacityAndWorkerIDTieBreak/greatest_free_capacity
+=== PAUSE TestLeastLoadedUsesFreeCapacityAndWorkerIDTieBreak/greatest_free_capacity
+=== RUN   TestLeastLoadedUsesFreeCapacityAndWorkerIDTieBreak/worker_ID_breaks_tie_regardless_of_input_order
+=== PAUSE TestLeastLoadedUsesFreeCapacityAndWorkerIDTieBreak/worker_ID_breaks_tie_regardless_of_input_order
+=== CONT  TestLeastLoadedUsesFreeCapacityAndWorkerIDTieBreak/greatest_free_capacity
+=== CONT  TestRoundRobinConcurrentSelectionsAreEven
+--- PASS: TestRoundRobinConcurrentSelectionsAreEven (0.00s)
+=== CONT  TestRoundRobinIsDeterministicAndDoesNotMutateInput
+--- PASS: TestRoundRobinIsDeterministicAndDoesNotMutateInput (0.00s)
+=== CONT  TestSchedulersRejectWhenNoWorkerIsEligible/round_robin
+=== CONT  TestSchedulersRejectWhenNoWorkerIsEligible/weighted_capacity
+--- PASS: TestSchedulersRejectWhenNoWorkerIsEligible (0.00s)
+    --- PASS: TestSchedulersRejectWhenNoWorkerIsEligible/least_loaded (0.00s)
+    --- PASS: TestSchedulersRejectWhenNoWorkerIsEligible/round_robin (0.00s)
+    --- PASS: TestSchedulersRejectWhenNoWorkerIsEligible/weighted_capacity (0.00s)
+=== CONT  TestLeastLoadedUsesFreeCapacityAndWorkerIDTieBreak/worker_ID_breaks_tie_regardless_of_input_order
+--- PASS: TestLeastLoadedUsesFreeCapacityAndWorkerIDTieBreak (0.00s)
+    --- PASS: TestLeastLoadedUsesFreeCapacityAndWorkerIDTieBreak/greatest_free_capacity (0.00s)
+    --- PASS: TestLeastLoadedUsesFreeCapacityAndWorkerIDTieBreak/worker_ID_breaks_tie_regardless_of_input_order (0.00s)
+=== CONT  TestWeightedCapacityRejectsBrokenRandomSource
+--- PASS: TestWeightedCapacityRejectsBrokenRandomSource (0.00s)
+=== CONT  TestEligibilityReturnsIndependentSortedSlice
+--- PASS: TestEligibilityReturnsIndependentSortedSlice (0.00s)
+=== CONT  TestWeightedCapacityZeroValueIsUsable
+--- PASS: TestWeightedCapacityZeroValueIsUsable (0.00s)
+--- PASS: TestWeightedCapacityApproximatesCapacityRatio (0.00s)
+PASS
+ok  	forgequeue/internal/coordinator	0.286s
+=== RUN   TestPublisherPublishesAndMarksEvents
+--- PASS: TestPublisherPublishesAndMarksEvents (0.00s)
+=== RUN   TestPublisherSchedulesFailedAndRemainingEvents
+--- PASS: TestPublisherSchedulesFailedAndRemainingEvents (0.00s)
+=== RUN   TestRetryDelayCapsAtOneMinute
+--- PASS: TestRetryDelayCapsAtOneMinute (0.00s)
+=== RUN   TestKafkaWriterRequiresBrokersAndTopic
+--- PASS: TestKafkaWriterRequiresBrokersAndTopic (0.00s)
+PASS
+ok  	forgequeue/internal/eventstream	0.176s
+=== RUN   TestExecutorPostgresSemantics
+=== RUN   TestExecutorPostgresSemantics/successful_callback_only_runs_once
+=== RUN   TestExecutorPostgresSemantics/callback_failure_permits_retry
+=== RUN   TestExecutorPostgresSemantics/callback_panic_permits_retry
+=== RUN   TestExecutorPostgresSemantics/concurrent_callers_serialize
+=== RUN   TestExecutorPostgresSemantics/transactional_callback_rolls_back_with_marker
+--- PASS: TestExecutorPostgresSemantics (0.08s)
+    --- PASS: TestExecutorPostgresSemantics/successful_callback_only_runs_once (0.00s)
+    --- PASS: TestExecutorPostgresSemantics/callback_failure_permits_retry (0.00s)
+    --- PASS: TestExecutorPostgresSemantics/callback_panic_permits_retry (0.00s)
+    --- PASS: TestExecutorPostgresSemantics/concurrent_callers_serialize (0.03s)
+    --- PASS: TestExecutorPostgresSemantics/transactional_callback_rolls_back_with_marker (0.02s)
+=== RUN   TestExecuteOnceRejectsInvalidInputBeforeDatabaseAccess
+=== RUN   TestExecuteOnceRejectsInvalidInputBeforeDatabaseAccess/empty
+=== RUN   TestExecuteOnceRejectsInvalidInputBeforeDatabaseAccess/whitespace
+=== RUN   TestExecuteOnceRejectsInvalidInputBeforeDatabaseAccess/too_long
+=== RUN   TestExecuteOnceRejectsInvalidInputBeforeDatabaseAccess/invalid_UTF-8
+=== RUN   TestExecuteOnceRejectsInvalidInputBeforeDatabaseAccess/NUL
+=== RUN   TestExecuteOnceRejectsInvalidInputBeforeDatabaseAccess/nil_callback
+--- PASS: TestExecuteOnceRejectsInvalidInputBeforeDatabaseAccess (0.00s)
+    --- PASS: TestExecuteOnceRejectsInvalidInputBeforeDatabaseAccess/empty (0.00s)
+    --- PASS: TestExecuteOnceRejectsInvalidInputBeforeDatabaseAccess/whitespace (0.00s)
+    --- PASS: TestExecuteOnceRejectsInvalidInputBeforeDatabaseAccess/too_long (0.00s)
+    --- PASS: TestExecuteOnceRejectsInvalidInputBeforeDatabaseAccess/invalid_UTF-8 (0.00s)
+    --- PASS: TestExecuteOnceRejectsInvalidInputBeforeDatabaseAccess/NUL (0.00s)
+    --- PASS: TestExecuteOnceRejectsInvalidInputBeforeDatabaseAccess/nil_callback (0.00s)
+=== RUN   TestExecuteOnceTxRejectsNilCallback
+--- PASS: TestExecuteOnceTxRejectsNilCallback (0.00s)
+PASS
+ok  	forgequeue/internal/idempotency	0.321s
+=== RUN   TestSubmitRejectsAtCapacityBeforePersistence
+--- PASS: TestSubmitRejectsAtCapacityBeforePersistence (0.00s)
+=== RUN   TestSubmitIdempotentReplayBypassesCapacityLimit
+--- PASS: TestSubmitIdempotentReplayBypassesCapacityLimit (0.00s)
+=== RUN   TestConcurrentBurstDoesNotOverAdmit
+--- PASS: TestConcurrentBurstDoesNotOverAdmit (0.00s)
+=== RUN   TestSubmitFailsClosedWhenQueueDepthIsUnavailable
+--- PASS: TestSubmitFailsClosedWhenQueueDepthIsUnavailable (0.00s)
+=== RUN   TestServiceKeepsPersistedJobWhenEnqueueFails
+--- PASS: TestServiceKeepsPersistedJobWhenEnqueueFails (0.00s)
+=== RUN   TestServiceSubmitAppliesDefaultAttempts
+--- PASS: TestServiceSubmitAppliesDefaultAttempts (0.00s)
+=== RUN   TestServiceRetryKeepsDurableTransitionWhenEnqueueFails
+--- PASS: TestServiceRetryKeepsDurableTransitionWhenEnqueueFails (0.00s)
+=== RUN   TestServiceRetryDoesNotEnqueueWhenTransitionFails
+--- PASS: TestServiceRetryDoesNotEnqueueWhenTransitionFails (0.00s)
+=== RUN   TestCanTransition
+=== RUN   TestCanTransition/queued_to_running
+=== RUN   TestCanTransition/running_to_succeeded
+=== RUN   TestCanTransition/retry_to_queued
+=== RUN   TestCanTransition/succeeded_is_terminal
+=== RUN   TestCanTransition/canceled_is_terminal
+=== RUN   TestCanTransition/cannot_skip_from_queued_to_success
+--- PASS: TestCanTransition (0.00s)
+    --- PASS: TestCanTransition/queued_to_running (0.00s)
+    --- PASS: TestCanTransition/running_to_succeeded (0.00s)
+    --- PASS: TestCanTransition/retry_to_queued (0.00s)
+    --- PASS: TestCanTransition/succeeded_is_terminal (0.00s)
+    --- PASS: TestCanTransition/canceled_is_terminal (0.00s)
+    --- PASS: TestCanTransition/cannot_skip_from_queued_to_success (0.00s)
+=== RUN   TestNewValidatesInputAndAppliesInitialState
+--- PASS: TestNewValidatesInputAndAppliesInitialState (0.00s)
+PASS
+ok  	forgequeue/internal/jobs	0.153s
+=== RUN   TestRetentionConfiguration
+=== RUN   TestRetentionConfiguration/RETENTION_ENABLEDmaybe
+=== RUN   TestRetentionConfiguration/RETENTION_JOB_AGE1h
+=== RUN   TestRetentionConfiguration/RETENTION_EVENT_AGE-1h
+=== RUN   TestRetentionConfiguration/RETENTION_BATCH0
+=== RUN   TestRetentionConfiguration/RETENTION_BATCH1001
+--- PASS: TestRetentionConfiguration (0.00s)
+    --- PASS: TestRetentionConfiguration/RETENTION_ENABLEDmaybe (0.00s)
+    --- PASS: TestRetentionConfiguration/RETENTION_JOB_AGE1h (0.00s)
+    --- PASS: TestRetentionConfiguration/RETENTION_EVENT_AGE-1h (0.00s)
+    --- PASS: TestRetentionConfiguration/RETENTION_BATCH0 (0.00s)
+    --- PASS: TestRetentionConfiguration/RETENTION_BATCH1001 (0.00s)
+PASS
+ok  	forgequeue/internal/operations	0.179s
+=== RUN   TestPostgresSettingsRejectInvalidPool
+--- PASS: TestPostgresSettingsRejectInvalidPool (0.00s)
+=== RUN   TestRedisSettingsRejectInvalidTimeout
+--- PASS: TestRedisSettingsRejectInvalidTimeout (0.00s)
+PASS
+ok  	forgequeue/internal/platform	0.199s
+=== RUN   TestReconcilerProgressesPastFullPageAndWraps
+--- PASS: TestReconcilerProgressesPastFullPageAndWraps (0.00s)
+=== RUN   TestReconcileOnceRestoresOnlyMissingJobs
+--- PASS: TestReconcileOnceRestoresOnlyMissingJobs (0.00s)
+=== RUN   TestReadyScoreOrdersPriorityThenAge
+--- PASS: TestReadyScoreOrdersPriorityThenAge (0.00s)
+=== RUN   TestRedisQueueLifecycle
+--- PASS: TestRedisQueueLifecycle (0.02s)
+=== RUN   TestReconcilerRestoresDurableJobMissingFromRedis
+--- PASS: TestReconcilerRestoresDurableJobMissingFromRedis (0.06s)
+PASS
+ok  	forgequeue/internal/queue	0.365s
+=== RUN   TestRetentionBoundsAndPreservesWork
+--- PASS: TestRetentionBoundsAndPreservesWork (0.11s)
+=== RUN   TestBackupRestoreAndUpgrade
+    operations_integration_test.go:174: custom-format backup restored and upgraded 008 -> 009; tenant, credential, job result and submission marker verified (25875 archive bytes)
+--- PASS: TestBackupRestoreAndUpgrade (0.42s)
+=== RUN   TestRecoveryProcessAndDependencyOutages
+    process_integration_test.go:139: coordinator SIGKILL/restart: existing lease renewed/completed in 1.040805833s
+    process_integration_test.go:152: API SIGKILL/restart: persisted job visible and submission deduplicated in 66.188167ms
+    process_integration_test.go:170: Redis stop/start with no persistence: queued hint restored in 1.5027065s
+    process_integration_test.go:217: PostgreSQL stop/start: pool reconnect, committed result retained, rejected submission retry succeeds in 264.239291ms
+    process_integration_test.go:252: worker SIGKILL/restart with reused ID: 2 attempts, stale RPCs fenced, completed in 7.141987s (5s lease, 2s handler)
+--- PASS: TestRecoveryProcessAndDependencyOutages (14.35s)
+=== RUN   TestRecoverySameWorkerLeaseFencing
+    recovery_integration_test.go:138: claim crash + execution crash: 3 lease generations, 2 attempts; all stale mutations rejected
+--- PASS: TestRecoverySameWorkerLeaseFencing (0.20s)
+=== RUN   TestRecoveryRedisLossAcrossPagesAndRetries
+    recovery_integration_test.go:192: restored 1,002 distinct ready hints including due retry after Redis data loss in 1.085664708s
+--- PASS: TestRecoveryRedisLossAcrossPagesAndRetries (1.98s)
+=== RUN   TestRecoverySideEffectBeforeAcknowledgment
+=== RUN   TestRecoverySideEffectBeforeAcknowledgment/unguarded
+    recovery_integration_test.go:244: 2 handler attempts; 2 committed side effects
+=== RUN   TestRecoverySideEffectBeforeAcknowledgment/transactionally_idempotent
+    recovery_integration_test.go:244: 2 handler attempts; 1 committed side effects
+--- PASS: TestRecoverySideEffectBeforeAcknowledgment (0.09s)
+    --- PASS: TestRecoverySideEffectBeforeAcknowledgment/unguarded (0.02s)
+    --- PASS: TestRecoverySideEffectBeforeAcknowledgment/transactionally_idempotent (0.02s)
+=== RUN   TestRecoveryEventCaptureDoesNotBreakCancellation
+--- PASS: TestRecoveryEventCaptureDoesNotBreakCancellation (0.05s)
+=== RUN   TestTenantSecurityAndAtomicQuotas
+=== RUN   TestTenantSecurityAndAtomicQuotas/pending
+=== RUN   TestTenantSecurityAndAtomicQuotas/rate
+--- PASS: TestTenantSecurityAndAtomicQuotas (0.30s)
+    --- PASS: TestTenantSecurityAndAtomicQuotas/pending (0.12s)
+    --- PASS: TestTenantSecurityAndAtomicQuotas/rate (0.04s)
+PASS
+ok  	forgequeue/internal/recovery	17.787s
+?   	forgequeue/internal/repository	[no test files]
+=== RUN   TestTruncateUTF8
+--- PASS: TestTruncateUTF8 (0.00s)
+=== RUN   TestJobRepositoryLifecycleAndIdempotency
+--- PASS: TestJobRepositoryLifecycleAndIdempotency (0.10s)
+=== RUN   TestJobRepositoryLeaseLifecycle
+=== RUN   TestJobRepositoryLeaseLifecycle/only_one_worker_acquires_the_lease
+=== RUN   TestJobRepositoryLeaseLifecycle/owner_starts_renews_and_finishes_an_active_lease
+=== RUN   TestJobRepositoryLeaseLifecycle/expiration_wins_over_stale_completion
+=== RUN   TestJobRepositoryLeaseLifecycle/requeues_expired_leased_and_running_jobs
+--- PASS: TestJobRepositoryLeaseLifecycle (0.09s)
+    --- PASS: TestJobRepositoryLeaseLifecycle/only_one_worker_acquires_the_lease (0.02s)
+    --- PASS: TestJobRepositoryLeaseLifecycle/owner_starts_renews_and_finishes_an_active_lease (0.01s)
+    --- PASS: TestJobRepositoryLeaseLifecycle/expiration_wins_over_stale_completion (0.01s)
+    --- PASS: TestJobRepositoryLeaseLifecycle/requeues_expired_leased_and_running_jobs (0.01s)
+=== RUN   TestJobRepositoryRetryLifecycle
+=== RUN   TestJobRepositoryRetryLifecycle/start_and_success_persist_one_attempt
+=== RUN   TestJobRepositoryRetryLifecycle/retryable_failure_waits_and_promotes_when_due
+=== RUN   TestJobRepositoryRetryLifecycle/exhaustion_dead_letters_and_manual_retry_grants_one_attempt
+=== RUN   TestJobRepositoryRetryLifecycle/expired_execution_cannot_report_and_recovery_closes_attempt
+=== RUN   TestJobRepositoryRetryLifecycle/missing_and_stale_manual_operations_return_domain_errors
+--- PASS: TestJobRepositoryRetryLifecycle (0.10s)
+    --- PASS: TestJobRepositoryRetryLifecycle/start_and_success_persist_one_attempt (0.02s)
+    --- PASS: TestJobRepositoryRetryLifecycle/retryable_failure_waits_and_promotes_when_due (0.01s)
+    --- PASS: TestJobRepositoryRetryLifecycle/exhaustion_dead_letters_and_manual_retry_grants_one_attempt (0.02s)
+    --- PASS: TestJobRepositoryRetryLifecycle/expired_execution_cannot_report_and_recovery_closes_attempt (0.01s)
+    --- PASS: TestJobRepositoryRetryLifecycle/missing_and_stale_manual_operations_return_domain_errors (0.00s)
+PASS
+ok  	forgequeue/internal/repository/postgres	0.518s
+=== RUN   TestNewLoggerIncludesRequiredFields
+--- PASS: TestNewLoggerIncludesRequiredFields (0.00s)
+=== RUN   TestNewLoggerHonorsLevel
+--- PASS: TestNewLoggerHonorsLevel (0.00s)
+=== RUN   TestMetricsExposeCoreCollectors
+--- PASS: TestMetricsExposeCoreCollectors (0.00s)
+=== RUN   TestHTTPMiddlewarePropagatesRequestIDAndRecordsDuration
+--- PASS: TestHTTPMiddlewarePropagatesRequestIDAndRecordsDuration (0.00s)
+PASS
+ok  	forgequeue/internal/telemetry	0.174s
+=== RUN   TestRPCRequiresServiceCredential
+--- PASS: TestRPCRequiresServiceCredential (0.00s)
+PASS
+ok  	forgequeue/internal/tenant	0.203s
+=== RUN   TestGRPCBrokerRenewsLease
+--- PASS: TestGRPCBrokerRenewsLease (0.00s)
+=== RUN   TestGRPCBrokerRejectsMissingLeaseExpiry
+--- PASS: TestGRPCBrokerRejectsMissingLeaseExpiry (0.00s)
+=== RUN   TestGRPCBrokerPassesFailureClassification
+--- PASS: TestGRPCBrokerPassesFailureClassification (0.00s)
+=== RUN   TestBoundedRPCContextAddsDeadline
+--- PASS: TestBoundedRPCContextAddsDeadline (0.00s)
+=== RUN   TestSleepHandlerCompletesAndCancels
+--- PASS: TestSleepHandlerCompletesAndCancels (0.00s)
+=== RUN   TestFailHandlerUsesAttemptNumber
+--- PASS: TestFailHandlerUsesAttemptNumber (0.00s)
+=== RUN   TestExecuteSafelyConvertsPanicToError
+--- PASS: TestExecuteSafelyConvertsPanicToError (0.00s)
+=== RUN   TestSleepHandlerRejectsExcessiveDuration
+--- PASS: TestSleepHandlerRejectsExcessiveDuration (0.00s)
+=== RUN   TestLeaseRenewerRenewsUntilStopped
+--- PASS: TestLeaseRenewerRenewsUntilStopped (0.03s)
+=== RUN   TestLeaseRenewerCancelsHandlerOnLeaseLoss
+--- PASS: TestLeaseRenewerCancelsHandlerOnLeaseLoss (0.00s)
+=== RUN   TestLeaseRenewerRejectsExpiredRenewal
+--- PASS: TestLeaseRenewerRejectsExpiredRenewal (0.00s)
+=== RUN   TestLeaseRenewerParentCancellationStopsInflightRenewal
+--- PASS: TestLeaseRenewerParentCancellationStopsInflightRenewal (0.00s)
+=== RUN   TestLeaseRenewerValidation
+=== RUN   TestLeaseRenewerValidation/nil_context
+=== RUN   TestLeaseRenewerValidation/missing_worker
+=== RUN   TestLeaseRenewerValidation/missing_job
+--- PASS: TestLeaseRenewerValidation (0.00s)
+    --- PASS: TestLeaseRenewerValidation/nil_context (0.00s)
+    --- PASS: TestLeaseRenewerValidation/missing_worker (0.00s)
+    --- PASS: TestLeaseRenewerValidation/missing_job (0.00s)
+=== RUN   TestLeaseRenewerStopPreventsFutureCalls
+--- PASS: TestLeaseRenewerStopPreventsFutureCalls (0.00s)
+=== RUN   TestRemoteCoordinatorRegisterRetriesAndReportsCapacity
+--- PASS: TestRemoteCoordinatorRegisterRetriesAndReportsCapacity (0.00s)
+=== RUN   TestRemoteCoordinatorRegisterStopsForPermanentFailure
+--- PASS: TestRemoteCoordinatorRegisterStopsForPermanentFailure (0.00s)
+=== RUN   TestRemoteCoordinatorHeartbeatReportsLoadAndRetries
+--- PASS: TestRemoteCoordinatorHeartbeatReportsLoadAndRetries (0.00s)
+=== RUN   TestRemoteCoordinatorHeartbeatRejectionIsReturned
+--- PASS: TestRemoteCoordinatorHeartbeatRejectionIsReturned (0.00s)
+=== RUN   TestNewRemoteCoordinatorValidatesConfiguration
+=== RUN   TestNewRemoteCoordinatorValidatesConfiguration/worker_ID
+=== RUN   TestNewRemoteCoordinatorValidatesConfiguration/concurrency
+=== RUN   TestNewRemoteCoordinatorValidatesConfiguration/active_job_counter
+=== RUN   TestNewRemoteCoordinatorValidatesConfiguration/retry_bounds
+--- PASS: TestNewRemoteCoordinatorValidatesConfiguration (0.00s)
+    --- PASS: TestNewRemoteCoordinatorValidatesConfiguration/worker_ID (0.00s)
+    --- PASS: TestNewRemoteCoordinatorValidatesConfiguration/concurrency (0.00s)
+    --- PASS: TestNewRemoteCoordinatorValidatesConfiguration/active_job_counter (0.00s)
+    --- PASS: TestNewRemoteCoordinatorValidatesConfiguration/retry_bounds (0.00s)
+=== RUN   TestGRPCCoordinatorRPCMapsRegistration
+--- PASS: TestGRPCCoordinatorRPCMapsRegistration (0.00s)
+=== RUN   TestGRPCCoordinatorRPCMapsHeartbeat
+--- PASS: TestGRPCCoordinatorRPCMapsHeartbeat (0.00s)
+=== RUN   TestGRPCCoordinatorRPCClassifiesErrors
+--- PASS: TestGRPCCoordinatorRPCClassifiesErrors (0.00s)
+=== RUN   TestWorkerTenantContextAndLogRedaction
+--- PASS: TestWorkerTenantContextAndLogRedaction (0.00s)
+=== RUN   TestWorkerRespectsConcurrencyLimit
+--- PASS: TestWorkerRespectsConcurrencyLimit (0.06s)
+=== RUN   TestWorkerDrainsActiveJobOnShutdown
+--- PASS: TestWorkerDrainsActiveJobOnShutdown (0.02s)
+=== RUN   TestWorkerCrashRecoveryPipeline
+--- PASS: TestWorkerCrashRecoveryPipeline (0.52s)
+=== RUN   TestIdempotentHandlerExecutesSideEffectOnceAfterLostCompletion
+--- PASS: TestIdempotentHandlerExecutesSideEffectOnceAfterLostCompletion (0.27s)
+=== RUN   TestRetryToSuccessDeadLetterAndManualRetryPipeline
+--- PASS: TestRetryToSuccessDeadLetterAndManualRetryPipeline (0.27s)
+=== RUN   TestSubmitToWorkerSuccessPipeline
+--- PASS: TestSubmitToWorkerSuccessPipeline (0.11s)
+PASS
+ok  	forgequeue/internal/worker	1.578s
+?   	forgequeue/migrations	[no test files]
+?   	forgequeue/proto/workerpb	[no test files]

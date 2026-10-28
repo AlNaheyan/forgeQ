@@ -13,6 +13,7 @@ import (
 	"forgequeue/internal/config"
 	"forgequeue/internal/eventstream"
 	"forgequeue/internal/jobs"
+	"forgequeue/internal/operations"
 	"forgequeue/internal/platform"
 	"forgequeue/internal/queue"
 	postgresrepository "forgequeue/internal/repository/postgres"
@@ -33,6 +34,10 @@ func main() {
 }
 
 func run() error {
+	maintenanceConfig, err := operations.LoadConfig()
+	if err != nil {
+		return err
+	}
 	cfg, err := config.Load("api")
 	if err != nil {
 		return fmt.Errorf("load configuration: %w", err)
@@ -111,6 +116,10 @@ func run() error {
 	}
 
 	repository := postgresrepository.NewJobRepository(db)
+	maintenance := &operations.Maintenance{DB: db, Config: maintenanceConfig, Metrics: metrics}
+	maintenanceDone := make(chan struct{})
+	go func() { defer close(maintenanceDone); maintenance.Run(ctx) }()
+	defer func() { stop(); <-maintenanceDone }()
 	jobQueue := queue.NewRedisQueue(redisClient, "forgequeue")
 	service := jobs.NewService(repository, jobQueue, cfg.DefaultMaxAttempts).
 		WithBackpressure(jobQueue, cfg.MaxQueueDepth, metrics)

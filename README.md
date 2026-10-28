@@ -16,6 +16,10 @@ The Wave 11 report includes measured 10k, 50k, and 100k baselines plus a
 
 ## Planned architecture
 
+Wave 18 adds opt-in retention, durable health metrics, alerts,
+and isolated backup/upgrade drills. See the [operator runbook](docs/operations.md)
+for the single-host deployment, backup policy, and upgrade procedure.
+
 Wave 17 adds tenant API keys, scoped job access, durable tenant quotas, and
 service-authenticated worker RPCs. Setup and limitations are documented in
 [tenant security](docs/tenant-security.md).

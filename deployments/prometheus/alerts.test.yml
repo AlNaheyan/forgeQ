@@ -1,0 +1,34 @@
+rule_files:
+  - alerts.yml
+evaluation_interval: 1m
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'forgequeue_oldest_ready_seconds{job="forgequeue-api"}'
+        values: '0 180 180 180 180 180 180 180'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: ForgeQueueQueueStalled
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: ForgeQueueQueueStalled
+        exp_alerts:
+          - exp_labels: {job: forgequeue-api, severity: warning}
+            exp_annotations:
+              summary: "Due work has waited over two minutes"
+              runbook: "docs/operations.md#queue-stalled"
+  - interval: 1m
+    input_series:
+      - series: 'up{job="forgequeue-api"}'
+        values: '0 0 0 1 1 1'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: ForgeQueueTargetDown
+        exp_alerts:
+          - exp_labels: {job: forgequeue-api, severity: critical}
+            exp_annotations:
+              summary: "ForgeQueue target cannot be scraped"
+              runbook: "docs/operations.md#target-or-dependency-down"
+      - eval_time: 5m
+        alertname: ForgeQueueTargetDown
+        exp_alerts: []

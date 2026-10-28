@@ -2474,6 +2474,10 @@ requirement calls for it.
 
 # WAVE 18 — Production Operations and Lifecycle
 
+Status: implemented; isolated backup/restore, upgrade, retention, and recovery
+tests pass. See [operator runbook](operations.md) for procedures and verification
+scope. Wave 19 (architecture evidence and product demo) is next.
+
 Goal:
 
 Make installation, upgrade, recovery, and ongoing operation understandable

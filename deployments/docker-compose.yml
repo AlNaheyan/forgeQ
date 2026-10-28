@@ -29,6 +29,7 @@ services:
       retries: 10
 
   api:
+    image: forgequeue/api:${FORGEQUEUE_VERSION:-dev}
     build:
       context: ..
       dockerfile: Dockerfile
@@ -71,6 +72,7 @@ services:
     stop_grace_period: 10s
 
   coordinator:
+    image: forgequeue/coordinator:${FORGEQUEUE_VERSION:-dev}
     build:
       context: ..
       dockerfile: Dockerfile
@@ -117,6 +119,7 @@ services:
       - "127.0.0.1:9091:9090"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
       - ./secrets:/etc/forgequeue/secrets:ro
       - prometheus-data:/prometheus
     depends_on:
@@ -143,6 +146,7 @@ services:
     restart: unless-stopped
 
   worker:
+    image: forgequeue/worker:${FORGEQUEUE_VERSION:-dev}
     build:
       context: ..
       dockerfile: Dockerfile

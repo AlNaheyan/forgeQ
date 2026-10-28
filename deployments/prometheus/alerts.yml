@@ -1,0 +1,66 @@
+groups:
+  - name: forgequeue-operations
+    rules:
+      - alert: ForgeQueueTargetDown
+        expr: up{job=~"forgequeue-api|forgequeue-coordinator"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "ForgeQueue target cannot be scraped"
+          runbook: "docs/operations.md#target-or-dependency-down"
+      - alert: ForgeQueueDurableDependencyDown
+        expr: forgequeue_durable_health{job="forgequeue-api"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "PostgreSQL operational snapshot is failing"
+          runbook: "docs/operations.md#target-or-dependency-down"
+      - alert: ForgeQueueQueueStalled
+        expr: forgequeue_oldest_ready_seconds{job="forgequeue-api"} > 120
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Due work has waited over two minutes"
+          runbook: "docs/operations.md#queue-stalled"
+      - alert: ForgeQueueQueueGrowing
+        expr: forgequeue_durable_ready_jobs{job="forgequeue-api"} > 1000
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Durable ready queue exceeds 1000 jobs"
+          runbook: "docs/operations.md#queue-stalled"
+      - alert: ForgeQueueNoHealthyWorkers
+        expr: forgequeue_workers_healthy{job="forgequeue-coordinator"} < 1
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "Coordinator reports no healthy workers"
+          runbook: "docs/operations.md#worker-loss"
+      - alert: ForgeQueueFailuresGrowing
+        expr: sum(increase(forgequeue_jobs_dead_letter_total{job="forgequeue-coordinator"}[10m])) > 5 or sum(increase(forgequeue_jobs_retried_total{job="forgequeue-coordinator"}[10m])) > 20
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "Retry or dead-letter growth requires investigation"
+          runbook: "docs/operations.md#retry-or-dead-letter-growth"
+      - alert: ForgeQueueAPIErrors
+        expr: sum(rate(forgequeue_api_request_duration_seconds_count{job="forgequeue-api",status=~"5.."}[5m])) > 0.1
+        for: 3m
+        labels: {severity: warning}
+        annotations:
+          summary: "API 5xx error rate is elevated"
+          runbook: "docs/operations.md#target-or-dependency-down"
+      - alert: ForgeQueuePublisherLag
+        expr: forgequeue_outbox_oldest_pending_seconds{job="forgequeue-api"} > 300
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "An unpublished lifecycle event is over five minutes old"
+          runbook: "docs/operations.md#event-publisher-lag"
+      - alert: ForgeQueueRetentionErrors
+        expr: increase(forgequeue_retention_errors_total{job="forgequeue-api"}[10m]) > 0
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "Opt-in retention transactions are failing"
+          runbook: "docs/operations.md#retention-and-disk-growth"

@@ -10,6 +10,9 @@ test:
 test-recovery:
 	bash scripts/test-recovery.sh
 
+# Includes isolated backup/restore, upgrade, retention, and recovery assertions.
+test-operations: test-recovery
+
 test-integration:
 	FORGEQUEUE_TEST_DATABASE_URL='postgres://forgequeue:forgequeue@localhost:55432/forgequeue?sslmode=disable' \
 	FORGEQUEUE_TEST_REDIS_ADDR='localhost:6379' \

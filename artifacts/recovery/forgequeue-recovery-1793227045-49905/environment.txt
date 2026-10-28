@@ -1,0 +1,12 @@
+go version go1.25.0 darwin/arm64
+Darwin arm64
+82fec1857c1135ece2aaf0903bbe86efb17b91ef
+ .env.example                          |  8 ++++
+ Makefile                              |  3 ++
+ cmd/api/main.go                       |  9 +++++
+ deployments/docker-compose.yml        |  4 ++
+ deployments/prometheus/prometheus.yml |  3 ++
+ internal/telemetry/metrics.go         | 13 +++++-
+ migrations/migrations.go              | 76 ++++++++++++++++++++++++++---------
+ 7 files changed, 97 insertions(+), 19 deletions(-)
+Explicit loopback ports: PostgreSQL=52083 Redis=52084
