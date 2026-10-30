@@ -1,0 +1,4 @@
+go version go1.25.0 darwin/arm64
+Darwin arm64
+18fba923b8e35f37674cfd65f5ab2dd11baf3b03
+Explicit loopback ports: PostgreSQL=60686 Redis=60687

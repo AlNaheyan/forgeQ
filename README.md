@@ -5,7 +5,7 @@ Go. It is being built to make coordination, failure recovery, at-least-once
 delivery, idempotency, backpressure, and observability explicit rather than
 hiding them behind a workflow framework.
 
-Waves 0 through 11 are complete: ForgeQueue has a durable job API, Redis-backed
+ForgeQueue has a durable tenant-authenticated job API, Redis-backed
 queues, PostgreSQL reconciliation, bounded-concurrency workers, and an explicit
 gRPC coordinator that owns worker registration, heartbeats, health, durable job
 leases, renewal, crash recovery, attempt tracking, retries, dead-lettering,
@@ -14,7 +14,14 @@ backpressure, Prometheus/Grafana observability, and reproducible k6 workloads.
 The Wave 11 report includes measured 10k, 50k, and 100k baselines plus a
 100k-job comparison across two, four, and eight workers.
 
-## Planned architecture
+## Architecture
+
+Start with the [architecture overview](docs/architecture.md),
+[decision records](docs/decisions.md), and [evidence index](docs/evidence.md).
+For a small hands-on tour, see the [live demo](docs/demo.md).
+It includes real dashboard screenshots and an eight-job, two-slot worker run.
+All planned build waves through Wave 19 are complete; this remains a
+single-host, trusted-worker deployment with the limitations documented above.
 
 Wave 18 adds opt-in retention, durable health metrics, alerts,
 and isolated backup/upgrade drills. See the [operator runbook](docs/operations.md)
@@ -35,7 +42,7 @@ Client --HTTP--> API ----------> PostgreSQL (durable truth)
                               Worker
 ```
 
-ForgeQueue will provide at-least-once execution. A job may run more than once
+ForgeQueue provides at-least-once execution. A job may run more than once
 when a worker completes its side effect but fails before acknowledging the
 result, so side-effecting handlers must be idempotent.
 

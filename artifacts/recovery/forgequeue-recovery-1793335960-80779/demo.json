@@ -1,0 +1,15 @@
+{
+  "jobs": 8,
+  "terminal": "succeeded",
+  "workerCount": 1,
+  "workerConcurrency": 2,
+  "payloadDurationMS": 1500,
+  "browser": {
+    "protocolVersion": "1.3",
+    "product": "Chrome/156.0.8078.74",
+    "revision": "@d331de35ca8ab1358c7a17e4bd41627d55eaef51",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+    "jsVersion": "15.6.75.25"
+  },
+  "capturedAt": "2026-10-30T04:53:13.399Z"
+}

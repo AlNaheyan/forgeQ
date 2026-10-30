@@ -4,6 +4,45 @@ This page contains the reproducible benchmark procedure and the results of the
 2026-10-16 local Wave 11 run. The numbers describe one Docker Desktop host;
 they are not production capacity claims.
 
+These historical results predate tenant authentication/quotas and retention.
+They are not current-build throughput claims. Keep the old results labeled
+Wave 11; use the profile below for a small current-build check.
+
+## Modest-machine profile (current build)
+
+Use one API, one coordinator, and one worker with concurrency 2. Follow
+[deployment/key setup](operations.md#fresh-installation), use an otherwise idle
+tenant, and export `FORGEQUEUE_API_KEY`. The default tenant admission limit of
+60/minute accommodates this **20-job** run; repeated runs must wait for quota
+reset and all jobs to finish. Kafka/Prometheus/Grafana are optional for this run.
+
+```sh
+mkdir -p artifacts/benchmarks/local
+git rev-parse HEAD
+uname -sm
+go version
+k6 version
+docker version
+docker compose version
+# On macOS also record: sysctl -n machdep.cpu.brand_string hw.memsize
+k6 run --summary-export artifacts/benchmarks/local/small.json \
+  -e JOBS=20 -e RATE=2 -e CONCURRENCY=2 -e JOB_DURATION_MS=25 \
+  -e RUN_ID="small-$(date -u +%Y%m%dT%H%M%SZ)" load/jobs.js
+```
+
+k6 inherits the exported API key; never put it into committed evidence or enable
+HTTP header debug logging. Record OS, CPU/RAM, Docker resource allocation, exact
+image IDs, worker count/concurrency, scheduler, quotas, database/Redis versions,
+and the command beside the summary. Inspect the authenticated dashboard until
+all 20 jobs succeed, and retain that accounting separately from HTTP statistics.
+This is a smoke workload, not a meaningful P99 or saturation estimate. No new
+throughput numbers are asserted for Wave 19. Use the historical large profiles
+only deliberately, with a dedicated tenant whose limits support that workload.
+
+For all commands below, authentication is now required. Provision appropriate
+`--per-minute`, `--max-pending`, and `--max-concurrent` tenant limits first;
+otherwise 429 may mean a tenant quota rather than the global backpressure guard.
+
 ## Workloads
 
 `load/jobs.js` submits a fixed number of zero-duration `sleep` jobs at a fixed

@@ -88,7 +88,8 @@ effect and its completion marker atomically.
 
 These tests retain the PostgreSQL volume. They do not prove recovery from disk
 loss, corruption, multi-host partitions, or regional failure. Backup/restore
-belongs to Wave 18. Reported failure retries honor `max_attempts`; the existing
+is covered by the [Wave 18 isolated restore drill](operations.md#backup-and-restore),
+not by these outage tests. Reported failure retries honor `max_attempts`; the existing
 expired-lease recovery path requeues crashed attempts independently of that
 budget. Repeated crashes can keep a job active and require operator intervention.
 

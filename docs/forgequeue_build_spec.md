@@ -2518,6 +2518,10 @@ assume it is required for the first real users.
 
 # WAVE 19 — Architecture Evidence and Product Demo
 
+Status: complete. See [architecture](architecture.md), [decisions](decisions.md),
+[evidence](evidence.md), and the [verified live demo](demo.md). All planned waves
+are complete; documented production limitations remain explicit follow-up work.
+
 Goal:
 
 Present an accurate, reproducible account of the system and its measured
