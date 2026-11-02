@@ -28,6 +28,9 @@ type Config struct {
 	Service string
 	Env     string
 
+	GRPCBindHost string
+	GRPCAuthMode string
+	ServiceTLS   *tls.Config
 	HTTPBindHost string
 	HTTPSTLS     *tls.Config
 	HTTPPort     int
@@ -145,10 +148,10 @@ func load(service string, lookup lookupFunc) (Config, error) {
 	if cfg.CoordinatorAddr, err = stringValue(lookup, "COORDINATOR_ADDR", "localhost:9090"); err != nil {
 		return Config{}, err
 	}
-	if cfg.Env == Production && cfg.DatabaseURL == "" {
+	if cfg.Env == Production && service != "worker" && cfg.DatabaseURL == "" {
 		return Config{}, errors.New("DATABASE_URL is required when APP_ENV=production")
 	}
-	if cfg.Env == Production && cfg.RedisAddr == "" {
+	if cfg.Env == Production && service != "worker" && cfg.RedisAddr == "" {
 		return Config{}, errors.New("REDIS_ADDR is required when APP_ENV=production")
 	}
 
@@ -306,6 +309,46 @@ func load(service string, lookup lookupFunc) (Config, error) {
 		cfg.HTTPSTLS, err = security.HTTPConfig(httpMode, httpCert, httpKey, cfg.Env == Production)
 		if err != nil {
 			return Config{}, err
+		}
+	}
+
+	cfg.GRPCBindHost, _ = lookup("GRPC_BIND_HOST")
+	cfg.GRPCAuthMode, _ = lookup("GRPC_AUTH_MODE")
+	if cfg.GRPCAuthMode == "" {
+		cfg.GRPCAuthMode = "token"
+	}
+	if cfg.GRPCAuthMode != "token" && cfg.GRPCAuthMode != "mtls" {
+		return Config{}, errors.New("GRPC_AUTH_MODE must be token or mtls")
+	}
+	if cfg.Env == Production && cfg.GRPCAuthMode != "mtls" {
+		return Config{}, errors.New("production requires GRPC_AUTH_MODE=mtls")
+	}
+	caFile, _ := lookup("SERVICE_TLS_CA_FILE")
+	certFile, _ := lookup("SERVICE_TLS_CERT_FILE")
+	keyFile, _ := lookup("SERVICE_TLS_KEY_FILE")
+	serverName, _ := lookup("COORDINATOR_TLS_SERVER_NAME")
+	if cfg.GRPCAuthMode == "token" && (caFile != "" || certFile != "" || keyFile != "" || serverName != "") {
+		return Config{}, errors.New("service TLS files conflict with token mode")
+	}
+	if cfg.GRPCAuthMode == "mtls" {
+		if service != "coordinator" && cfg.Env == Production {
+			explicit, _ := lookup("COORDINATOR_ADDR")
+			if explicit == "" {
+				return Config{}, errors.New("COORDINATOR_ADDR is required in production")
+			}
+		}
+		cfg.ServiceTLS, err = security.ServiceTLS(caFile, certFile, keyFile, serverName, service == "coordinator")
+		if err != nil {
+			return Config{}, err
+		}
+		if service == "api" || service == "worker" {
+			identity, e := security.CertificateIdentity(cfg.ServiceTLS.Certificates[0].Leaf)
+			if e != nil || identity.Role != service {
+				return Config{}, errors.New("service certificate identity does not match process role")
+			}
+			if service == "worker" && (cfg.WorkerID == "" || cfg.WorkerID != identity.ID) {
+				return Config{}, errors.New("WORKER_ID must match certificate identity")
+			}
 		}
 	}
 

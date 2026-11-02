@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"forgequeue/internal/security"
+	"google.golang.org/grpc/credentials"
 	"log/slog"
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -113,15 +116,23 @@ func run() error {
 		metricsErrors <- telemetry.ServeMetrics(ctx, fmt.Sprintf(":%d", cfg.MetricsPort), metrics, logger)
 	}()
 
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.GRPCPort))
+	serverOptions := []grpc.ServerOption{}
+	if cfg.ServiceTLS != nil {
+		serverOptions = append(serverOptions, grpc.Creds(credentials.NewTLS(cfg.ServiceTLS)), grpc.UnaryInterceptor(security.UnaryAuthorization), grpc.StreamInterceptor(security.StreamAuthorization))
+	} else {
+		rpcAuth, err := tenant.LoadRPCAuth()
+		if err != nil {
+			return err
+		}
+		serverOptions = append(serverOptions, grpc.UnaryInterceptor(rpcAuth.Intercept), grpc.StreamInterceptor(rpcAuth.InterceptStream))
+	}
+	listener, err := net.Listen("tcp", net.JoinHostPort(cfg.GRPCBindHost, strconv.Itoa(cfg.GRPCPort)))
 	if err != nil {
 		return fmt.Errorf("listen for gRPC: %w", err)
 	}
-	rpcAuth, err := tenant.LoadRPCAuth()
-	if err != nil {
-		return err
-	}
-	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(rpcAuth.Intercept), grpc.StreamInterceptor(rpcAuth.InterceptStream))
+	defer listener.Close()
+	grpcServer := grpc.NewServer(serverOptions...)
+
 	workerpb.RegisterWorkerCoordinatorServer(grpcServer, coordinatorServer)
 	healthServer := health.NewServer()
 	healthpb.RegisterHealthServer(grpcServer, healthServer)

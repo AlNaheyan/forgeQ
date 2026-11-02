@@ -26,6 +26,7 @@ import (
 	"forgequeue/proto/workerpb"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
@@ -68,11 +69,17 @@ func run() error {
 		return err
 	}
 	defer redisClient.Close()
-	rpcAuth, err := tenant.LoadRPCAuth()
-	if err != nil {
-		return err
+	dialOptions := []grpc.DialOption{}
+	if cfg.ServiceTLS != nil {
+		dialOptions = append(dialOptions, grpc.WithTransportCredentials(credentials.NewTLS(cfg.ServiceTLS)))
+	} else {
+		rpcAuth, err := tenant.LoadRPCAuth()
+		if err != nil {
+			return err
+		}
+		dialOptions = append(dialOptions, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithPerRPCCredentials(rpcAuth))
 	}
-	coordinatorConnection, err := grpc.NewClient(cfg.CoordinatorAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithPerRPCCredentials(rpcAuth))
+	coordinatorConnection, err := grpc.NewClient(cfg.CoordinatorAddr, dialOptions...)
 	if err != nil {
 		return fmt.Errorf("create coordinator client: %w", err)
 	}
