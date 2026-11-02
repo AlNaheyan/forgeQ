@@ -1,240 +1,55 @@
-# ForgeQueue
+# ForgeQ
 
-Licensed under the [MIT License](LICENSE), copyright ForgeQ.
-
-ForgeQueue is a production-style distributed job execution platform written in
-Go. It is being built to make coordination, failure recovery, at-least-once
-delivery, idempotency, backpressure, and observability explicit rather than
-hiding them behind a workflow framework.
-
-ForgeQueue has a durable tenant-authenticated job API, Redis-backed
-queues, PostgreSQL reconciliation, bounded-concurrency workers, and an explicit
-gRPC coordinator that owns worker registration, heartbeats, health, durable job
-leases, renewal, crash recovery, attempt tracking, retries, dead-lettering,
-pluggable multi-worker scheduling, durable execution-idempotency helpers,
-backpressure, Prometheus/Grafana observability, and reproducible k6 workloads.
-The Wave 11 report includes measured 10k, 50k, and 100k baselines plus a
-100k-job comparison across two, four, and eight workers.
-
-## Architecture
-
-Start with the [architecture overview](docs/architecture.md),
-[decision records](docs/decisions.md), and [evidence index](docs/evidence.md).
-For a small hands-on tour, see the [live demo](docs/demo.md).
-It includes real dashboard screenshots and an eight-job, two-slot worker run.
-All planned build waves through Wave 19 are complete; this remains a
-single-host, trusted-worker deployment with the limitations documented above.
-
-Wave 18 adds opt-in retention, durable health metrics, alerts,
-and isolated backup/upgrade drills. See the [operator runbook](docs/operations.md)
-for the single-host deployment, backup policy, and upgrade procedure.
-
-Wave 17 adds tenant API keys, scoped job access, durable tenant quotas, and
-service-authenticated worker RPCs. Setup and limitations are documented in
-[tenant security](docs/tenant-security.md).
-
-```text
-Client --HTTP--> API ----------> PostgreSQL (durable truth)
-                  |                     ^
-                  |                     |
-                  +--gRPC--> Coordinator +--> Redis (queue hints)
-                                ^
-                                |
-                         gRPC   |
-                              Worker
-```
-
-ForgeQueue provides at-least-once execution. A job may run more than once
-when a worker completes its side effect but fails before acknowledging the
-result, so side-effecting handlers must be idempotent.
-
-For PostgreSQL-backed effects, `internal/idempotency.Executor` provides
-`ExecuteOnce` and transaction-aware `ExecuteOnceTx` guards. See
-[`docs/failure-semantics.md`](docs/failure-semantics.md) for the complete
-delivery contract and guidance for external side effects.
+A distributed job execution platform built with Go, PostgreSQL, Redis, and
+gRPC. ForgeQ provides tenant-authenticated job submission, bounded-concurrency
+workers, retries, and lease-based recovery, with an embedded dashboard to launch
+jobs and watch them run.
 
 ## Requirements
 
 - Go 1.23 or newer
 - Docker with Docker Compose
+- OpenSSL for generating a local service credential
+
+![ForgeQ system design](assets/forgeq-system-design.png)
 
 ## Local development
 
-Copy the example environment if you want to override the development defaults:
+From the repository root, configure your environment and start the dependencies:
 
 ```bash
 cp .env.example .env
 export CONTROL_PLANE_TOKEN="$(openssl rand -hex 32)"
-```
-
-The service token is mandatory; keep the same value for API, coordinator, and
-workers (save it in your local, ignored `.env` for subsequent Compose runs).
-Go commands do not automatically load `.env`. Start PostgreSQL and Redis:
-
-```bash
-docker compose up -d postgres redis
-```
-
-Create a local tenant and save the returned API key securely:
-
-```bash
 export DATABASE_URL='postgres://forgequeue:forgequeue@localhost:55432/forgequeue?sslmode=disable'
+docker compose up -d --wait postgres redis
+```
+
+Keep the service token for subsequent runs by saving it as `CONTROL_PLANE_TOKEN`
+in your local `.env`. Go commands do not automatically load that file.
+
+Create a tenant and save the returned `api_key` securely:
+
+```bash
 go run ./cmd/tenant create --name local --operator
-# Set FORGEQUEUE_API_KEY to the returned api_key, or paste it into the dashboard.
 ```
 
-See [tenant security and setup](docs/tenant-security.md) for rotation, quotas,
-Prometheus credentials, and upgrade handling for existing jobs.
-
-Or build and run the complete API/worker pipeline:
+Build and start the API, coordinator, and worker in the same terminal:
 
 ```bash
-docker compose up --build
+docker compose up -d --build api coordinator worker
 ```
 
-Scale the worker fleet while keeping one coordinator:
+Open [localhost:8080/dashboard](http://localhost:8080/dashboard), connect with
+your API key, and launch a job. Local development uses HTTP; public deployment
+requires HTTPS termination.
 
-```bash
-docker compose up -d --build --scale worker=3
-```
-
-Workers receive unique container-hostname IDs automatically. Select
-`least_loaded`, `round_robin`, or `weighted_capacity` with the coordinator's
-`SCHEDULER_STRATEGY` environment variable.
-
-For long-lived deployments, set `WORKER_ID` from a stable, unique instance
-identity (for example, a StatefulSet pod name). Automatically generated IDs
-change on restart, so repeatedly restarting workers can create stale
-`worker_id` label series in Prometheus. Do not give concurrent workers the
-same explicit ID.
-
-Open the built-in operator dashboard at
-[http://localhost:8080/dashboard](http://localhost:8080/dashboard). It can
-submit jobs, track their state, inspect payloads and results, cancel queued
-work, and show live worker health, capacity, and assignment totals. It is
-embedded in the Go API, so there is no separate frontend build or service.
-Connect using your API key. Non-operator keys see only their tenant's jobs;
-fleet health and metrics require an operator key.
-
-Operational telemetry is available through
-[Prometheus](http://localhost:9091) and the provisioned
-[Grafana dashboard](http://localhost:3000/d/forgequeue-overview/forgequeue-overview).
-The API also exposes its Prometheus data directly at
-[http://localhost:8080/metrics](http://localhost:8080/metrics).
-
-New submissions are rejected with HTTP `429` and `Retry-After` when the ready
-queue reaches `MAX_QUEUE_DEPTH`. The in-flight reservation makes this bound
-safe for concurrent requests within one API process; deployments with multiple
-API replicas should use a shared atomic admission mechanism.
-
-PostgreSQL is exposed on port `55432` to avoid colliding with a system database;
-Redis is exposed on `6379`.
-
-Start the API (migrations are applied automatically):
-
-```bash
-go run ./cmd/api
-```
-
-Submit and inspect a job:
-
-```bash
-curl -X POST http://localhost:8080/v1/jobs \
-  -H "Authorization: Bearer $FORGEQUEUE_API_KEY" \
-  -H 'Content-Type: application/json' \
-  -H 'Idempotency-Key: example-sleep-1' \
-  -d '{"type":"sleep","payload":{"duration_ms":1000}}'
-
-curl -H "Authorization: Bearer $FORGEQUEUE_API_KEY" 'http://localhost:8080/v1/jobs?status=queued'
-```
-
-The worker registers with the coordinator, reports load through heartbeats, and
-requests work through gRPC. The coordinator atomically leases queued jobs in
-PostgreSQL before they start. Long-running handlers renew their leases; if a
-worker disappears, the coordinator requeues its job after the lease expires.
-A successful `sleep` job moves from `queued` to `leased` to `running` to
-`succeeded`. Retryable failures enter `retry_wait` with capped exponential
-backoff and jitter. Exhausted jobs enter `dead_letter` and can be manually
-requeued from the dashboard or API.
-
-Available HTTP endpoints:
-
-- `POST /v1/jobs`
-- `GET /v1/jobs/{id}`
-- `GET /v1/jobs?status=&type=&limit=&cursor=`
-- `POST /v1/jobs/{id}/cancel`
-- `POST /v1/jobs/{id}/retry`
-- `GET /v1/workers`
-- `GET /healthz`
-- `GET /readyz`
-- `GET /metrics`
-
-The sustained and overload workloads live in `load/`. See
-[`docs/benchmarks.md`](docs/benchmarks.md) for k6 commands, measurement rules,
-raw evidence links, measured results, and limitations.
-
-Wave 12 failure-injection commands are available through `make chaos-worker-crash`,
-`make chaos-redis-restart`, and `make chaos-coordinator-restart`. They write timestamped evidence under
-`artifacts/chaos/`; see [`docs/chaos-results.md`](docs/chaos-results.md) before
-running experiments against the local Compose stack.
-
-Wave 13 runtime limits, connection pools, shutdown behavior, and payload-size
-protection are described in [`docs/production-hardening.md`](docs/production-hardening.md).
-
-Wave 14 adds an optional Kafka lifecycle-event stream backed by a transactional
-PostgreSQL outbox. It stays disabled in the default stack; opt in with the
-Compose overlay and see [`docs/event-stream.md`](docs/event-stream.md) for the
-delivery contract and consumer guidance.
-
-Wave 16 adds lease-generation fencing, paginated reconciliation, and an isolated
-failure/recovery suite. Run `make test-recovery` to exercise crashes and
-PostgreSQL/Redis outages using small disposable dependencies. See
-[`docs/recovery-results.md`](docs/recovery-results.md) for guarantees, evidence,
-resource limits, and the coordinated worker/coordinator upgrade requirement.
-
-Run the test suite:
+Run tests or stop the stack:
 
 ```bash
 go test ./...
+make test-recovery       # Integration tests using disposable PostgreSQL/Redis
+docker compose down     # Stops the stack without deleting its data volumes
 ```
 
-Run the PostgreSQL and Redis integration tests while the dependencies are up:
-
-```bash
-make test-integration
-```
-
-Build every command:
-
-```bash
-go build ./...
-```
-
-Stop the local dependencies:
-
-```bash
-docker compose down
-```
-
-## Repository map
-
-- `cmd/`: service and tooling entry points
-- `internal/config/`: typed environment configuration
-- `internal/jobs/`: job model, state machine, and application service
-- `internal/idempotency/`: durable handler execution guards
-- `internal/repository/postgres/`: durable job storage
-- `internal/queue/`: Redis queue and PostgreSQL-to-Redis reconciliation
-- `internal/worker/`: worker runtime, concurrency control, and built-in handlers
-- `internal/coordinator/`: worker registry, health state, and gRPC control plane
-- `proto/`: coordinator protocol and generated Go stubs
-- `internal/api/`: HTTP transport
-- `internal/telemetry/`: structured logging, request IDs, and Prometheus metrics
-- `load/`: k6 sustained-load and overload workloads
-- `deployments/grafana/`: provisioned operations dashboard
-- `deployments/prometheus/`: local scrape configuration
-- `migrations/`: embedded, ordered PostgreSQL migrations
-- `deployments/`: local deployment definitions
-- `docs/`: build specification and architecture documentation
-
-The implementation follows the ordered waves in
-[`docs/forgequeue_build_spec.md`](docs/forgequeue_build_spec.md).
+For optional monitoring, Kafka, and deployment guidance, see the
+[operations guide](docs/operations.md) and [event-stream setup](docs/event-stream.md).
