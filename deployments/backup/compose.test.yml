@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16.6-alpine
+    environment:
+      POSTGRES_USER: backup_fixture
+      POSTGRES_PASSWORD: synthetic-local-only
+      POSTGRES_DB: forgequeue_backup_test
+    ports:
+      - "127.0.0.1::5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U backup_fixture -d forgequeue_backup_test"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
