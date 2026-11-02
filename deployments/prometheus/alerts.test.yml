@@ -16,7 +16,7 @@ tests:
           - exp_labels: {job: forgequeue-api, severity: warning}
             exp_annotations:
               summary: "Due work has waited over two minutes"
-              runbook: "docs/operations.md#queue-stalled"
+              runbook: "deployments/RUNBOOK.md#queue-stalled"
   - interval: 1m
     input_series:
       - series: 'up{job="forgequeue-api"}'
@@ -28,7 +28,7 @@ tests:
           - exp_labels: {job: forgequeue-api, severity: critical}
             exp_annotations:
               summary: "ForgeQueue target cannot be scraped"
-              runbook: "docs/operations.md#target-or-dependency-down"
+              runbook: "deployments/RUNBOOK.md#target-or-dependency-down"
       - eval_time: 5m
         alertname: ForgeQueueTargetDown
         exp_alerts: []

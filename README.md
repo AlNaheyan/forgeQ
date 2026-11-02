@@ -51,5 +51,5 @@ make test-recovery       # Integration tests using disposable PostgreSQL/Redis
 docker compose down     # Stops the stack without deleting its data volumes
 ```
 
-For optional monitoring, Kafka, and deployment guidance, see the
-[operations guide](docs/operations.md) and [event-stream setup](docs/event-stream.md).
+Prometheus/Grafana and Kafka lifecycle events are optional. See the
+[deployment notes](deployments/RUNBOOK.md) for essential operational guidance.

@@ -13,3 +13,5 @@ coverage.out
 /deployments/secrets/*
 !/deployments/secrets/.gitkeep
 
+/docs
+
