@@ -1,5 +1,7 @@
 # ForgeQueue
 
+Licensed under the [MIT License](LICENSE), copyright ForgeQ.
+
 ForgeQueue is a production-style distributed job execution platform written in
 Go. It is being built to make coordination, failure recovery, at-least-once
 delivery, idempotency, backpressure, and observability explicit rather than
