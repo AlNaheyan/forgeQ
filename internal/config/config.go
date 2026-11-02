@@ -3,8 +3,11 @@
 package config
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
+	"forgequeue/internal/security"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -25,9 +28,11 @@ type Config struct {
 	Service string
 	Env     string
 
-	HTTPPort    int
-	GRPCPort    int
-	MetricsPort int
+	HTTPBindHost string
+	HTTPSTLS     *tls.Config
+	HTTPPort     int
+	GRPCPort     int
+	MetricsPort  int
 
 	DatabaseURL     string
 	RedisAddr       string
@@ -104,6 +109,16 @@ func load(service string, lookup lookupFunc) (Config, error) {
 	if cfg.HTTPPort, err = intValue(lookup, "HTTP_PORT", 8080, 1); err != nil {
 		return Config{}, err
 	}
+	cfg.HTTPBindHost, _ = lookup("HTTP_BIND_HOST")
+	if cfg.HTTPBindHost != "" && net.ParseIP(cfg.HTTPBindHost) == nil && cfg.HTTPBindHost != "localhost" {
+		return Config{}, errors.New("HTTP_BIND_HOST must be an IP address or localhost")
+	}
+	httpMode, ok := lookup("HTTP_TLS_MODE")
+	if !ok {
+		httpMode = "disabled"
+	}
+	httpCert, _ := lookup("HTTP_TLS_CERT_FILE")
+	httpKey, _ := lookup("HTTP_TLS_KEY_FILE")
 	if cfg.GRPCPort, err = intValue(lookup, "GRPC_PORT", 9090, 1); err != nil {
 		return Config{}, err
 	}
@@ -284,6 +299,14 @@ func load(service string, lookup lookupFunc) (Config, error) {
 	}
 	if cfg.EventsEnabled && len(cfg.KafkaBrokers) == 0 {
 		return Config{}, errors.New("KAFKA_BROKERS is required when EVENTS_ENABLED=true")
+	}
+
+	// Only API exposes HTTP ingress.
+	if service == "api" {
+		cfg.HTTPSTLS, err = security.HTTPConfig(httpMode, httpCert, httpKey, cfg.Env == Production)
+		if err != nil {
+			return Config{}, err
+		}
 	}
 
 	return cfg, nil

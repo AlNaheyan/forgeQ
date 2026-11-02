@@ -3,9 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"forgequeue/internal/security"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -142,8 +145,9 @@ func run() error {
 		Routes()
 
 	server := &http.Server{
-		Addr:              fmt.Sprintf(":%d", cfg.HTTPPort),
+		Addr:              net.JoinHostPort(cfg.HTTPBindHost, strconv.Itoa(cfg.HTTPPort)),
 		Handler:           handler,
+		TLSConfig:         cfg.HTTPSTLS,
 		ReadHeaderTimeout: cfg.HTTPReadHeaderTimeout,
 		ReadTimeout:       cfg.HTTPReadTimeout,
 		WriteTimeout:      cfg.HTTPWriteTimeout,
@@ -153,7 +157,7 @@ func run() error {
 	serverErrors := make(chan error, 1)
 	go func() {
 		logger.Info("API listening", "port", cfg.HTTPPort)
-		serverErrors <- server.ListenAndServe()
+		serverErrors <- security.ServeHTTP(server)
 	}()
 
 	select {
