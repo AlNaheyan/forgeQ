@@ -1,0 +1,6 @@
+{
+  "protoc-linux-amd64": {
+    "url": "https://github.com/protocolbuffers/protobuf/releases/download/v33.4/protoc-33.4-linux-x86_64.zip",
+    "sha256": "c0040ea9aef08fdeb2c74ca609b18d5fdbfc44ea0042fcfbfb38860d35f7dd66"
+  }
+}
