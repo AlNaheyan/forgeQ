@@ -6,6 +6,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -32,5 +34,26 @@ func TestRPCRequiresServiceCredential(t *testing.T) {
 		} else if status.Code(err) != codes.Unauthenticated || called {
 			t.Fatal("unauthorized RPC accepted")
 		}
+	}
+}
+
+func TestRPCAuthSecretFileAndProductionGuard(t *testing.T) {
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("CONTROL_PLANE_TOKEN", "")
+	path := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(path, []byte(strings.Repeat("z", 32)+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CONTROL_PLANE_TOKEN_FILE", path)
+	if _, err := LoadRPCAuth(); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CONTROL_PLANE_TOKEN", strings.Repeat("x", 32))
+	if _, err := LoadRPCAuth(); err == nil {
+		t.Fatal("conflicting sources accepted")
+	}
+	t.Setenv("APP_ENV", "production")
+	if _, err := LoadRPCAuth(); err == nil {
+		t.Fatal("production token mode accepted")
 	}
 }

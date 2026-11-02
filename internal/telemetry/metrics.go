@@ -13,6 +13,7 @@ import (
 // avoids duplicate-registration panics in tests and lets Prometheus aggregate
 // the same metric names from the API and coordinator processes.
 type Metrics struct {
+	TLSCertificateNotAfter                                                            *prometheus.GaugeVec
 	DurableHealth, DurableQueueDepth, OldestReadyAge, OutboxLag, RetentionLastSuccess prometheus.Gauge
 	RetentionDeleted                                                                  *prometheus.CounterVec
 	RetentionErrors                                                                   prometheus.Counter
@@ -43,6 +44,7 @@ type Metrics struct {
 func NewMetrics() *Metrics {
 	registry := prometheus.NewRegistry()
 	m := &Metrics{
+		TLSCertificateNotAfter: prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "forgequeue_tls_certificate_not_after_timestamp_seconds", Help: "Expiry of loaded TLS certificate snapshot."}, []string{"endpoint", "role"}),
 		DurableHealth:          prometheus.NewGauge(prometheus.GaugeOpts{Name: "forgequeue_durable_health", Help: "Last durable operational snapshot succeeded (1/0)."}),
 		DurableQueueDepth:      prometheus.NewGauge(prometheus.GaugeOpts{Name: "forgequeue_durable_ready_jobs", Help: "Due queued jobs in PostgreSQL."}),
 		OldestReadyAge:         prometheus.NewGauge(prometheus.GaugeOpts{Name: "forgequeue_oldest_ready_seconds", Help: "Age of oldest due queued job."}),
@@ -70,7 +72,7 @@ func NewMetrics() *Metrics {
 		JobsAssigned:           prometheus.NewCounterVec(prometheus.CounterOpts{Name: "forgequeue_jobs_assigned_total", Help: "Durable job leases assigned by worker."}, []string{"worker_id"}),
 		APIRequestDuration:     prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "forgequeue_api_request_duration_seconds", Help: "HTTP API request duration.", Buckets: prometheus.DefBuckets}, []string{"method", "route", "status"}),
 	}
-	registry.MustRegister(
+	registry.MustRegister(m.TLSCertificateNotAfter,
 		m.DurableHealth, m.DurableQueueDepth, m.OldestReadyAge, m.OutboxLag, m.RetentionLastSuccess, m.RetentionDeleted, m.RetentionErrors,
 		m.JobsSubmitted, m.JobsStarted, m.JobsCompleted, m.JobsFailed,
 		m.JobsRetried, m.JobsDeadLetter, m.QueueDepth, m.JobDuration,

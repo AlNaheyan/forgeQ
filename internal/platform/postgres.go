@@ -34,7 +34,7 @@ func OpenPostgresWithSettings(ctx context.Context, databaseURL string, settings 
 	}
 	db, err := sql.Open("pgx", databaseURL)
 	if err != nil {
-		return nil, fmt.Errorf("open PostgreSQL: %w", err)
+		return nil, fmt.Errorf("open PostgreSQL: configuration rejected")
 	}
 	db.SetMaxOpenConns(settings.MaxOpenConns)
 	db.SetMaxIdleConns(settings.MaxIdleConns)
@@ -44,7 +44,7 @@ func OpenPostgresWithSettings(ctx context.Context, databaseURL string, settings 
 	defer cancel()
 	if err := db.PingContext(pingCtx); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("ping PostgreSQL: %w", err)
+		return nil, fmt.Errorf("ping PostgreSQL: connection failed")
 	}
 	return db, nil
 }

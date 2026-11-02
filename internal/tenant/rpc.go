@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"fmt"
+	"forgequeue/internal/security"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -13,11 +14,17 @@ import (
 )
 
 // RPCAuth is a service credential, never a tenant credential. Plaintext transport
-// is permitted only on the private service network; public ingress needs TLS.
+// is development/test compatibility only; production uses verified mTLS.
 type RPCAuth struct{ token string }
 
 func LoadRPCAuth() (RPCAuth, error) {
-	token := os.Getenv("CONTROL_PLANE_TOKEN")
+	if os.Getenv("APP_ENV") == "production" {
+		return RPCAuth{}, fmt.Errorf("token RPC authentication is development/test only")
+	}
+	token, err := security.Secret("CONTROL_PLANE_TOKEN", os.Getenv("CONTROL_PLANE_TOKEN"), os.Getenv("CONTROL_PLANE_TOKEN_FILE"))
+	if err != nil {
+		return RPCAuth{}, err
+	}
 	if len(token) < 32 {
 		return RPCAuth{}, fmt.Errorf("CONTROL_PLANE_TOKEN must contain at least 32 bytes")
 	}

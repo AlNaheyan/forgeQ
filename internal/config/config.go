@@ -139,8 +139,14 @@ func load(service string, lookup lookupFunc) (Config, error) {
 		databaseDefault = ""
 		redisDefault = ""
 	}
-	if cfg.DatabaseURL, err = stringValue(lookup, "DATABASE_URL", databaseDefault); err != nil {
+	directDSN, _ := lookup("DATABASE_URL")
+	dsnFile, _ := lookup("DATABASE_URL_FILE")
+	cfg.DatabaseURL, err = security.Secret("DATABASE_URL", directDSN, dsnFile)
+	if err != nil {
 		return Config{}, err
+	}
+	if cfg.DatabaseURL == "" {
+		cfg.DatabaseURL = databaseDefault
 	}
 	if cfg.RedisAddr, err = stringValue(lookup, "REDIS_ADDR", redisDefault); err != nil {
 		return Config{}, err

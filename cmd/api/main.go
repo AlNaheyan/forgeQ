@@ -51,6 +51,12 @@ func run() error {
 		return fmt.Errorf("initialize logger: %w", err)
 	}
 	metrics := telemetry.NewMetrics()
+	if cfg.ServiceTLS != nil {
+		metrics.TLSCertificateNotAfter.WithLabelValues("grpc", "client").Set(float64(cfg.ServiceTLS.Certificates[0].Leaf.NotAfter.Unix()))
+	}
+	if cfg.HTTPSTLS != nil {
+		metrics.TLSCertificateNotAfter.WithLabelValues("http", "server").Set(float64(cfg.HTTPSTLS.Certificates[0].Leaf.NotAfter.Unix()))
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
