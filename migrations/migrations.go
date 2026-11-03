@@ -126,3 +126,43 @@ func apply(ctx context.Context, tx *sql.Tx, name string) error {
 	}
 	return nil
 }
+
+// Verify is the production startup path: no DDL or global configuration writes.
+func Verify(ctx context.Context, db *sql.DB, eventsEnabled bool) error {
+	entries, err := fs.ReadDir(files, ".")
+	if err != nil {
+		return err
+	}
+	expected := map[string]bool{}
+	for _, entry := range entries {
+		if strings.HasSuffix(entry.Name(), ".sql") {
+			expected[entry.Name()] = true
+		}
+	}
+	rows, err := db.QueryContext(ctx, "SELECT version FROM schema_migrations")
+	if err != nil {
+		return fmt.Errorf("verify schema: migration metadata unavailable")
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var version string
+		if err := rows.Scan(&version); err != nil {
+			return fmt.Errorf("verify schema: invalid migration metadata")
+		}
+		if !expected[version] {
+			return fmt.Errorf("verify schema: unknown migration")
+		}
+		delete(expected, version)
+	}
+	if rows.Err() != nil || len(expected) != 0 {
+		return fmt.Errorf("verify schema: migrations are incomplete")
+	}
+	var enabled bool
+	if err := db.QueryRowContext(ctx, "SELECT enabled FROM event_stream_config WHERE singleton=TRUE").Scan(&enabled); err != nil {
+		return fmt.Errorf("verify event stream configuration: unavailable")
+	}
+	if enabled != eventsEnabled {
+		return fmt.Errorf("event stream configuration differs; run privileged bootstrap")
+	}
+	return nil
+}

@@ -90,12 +90,22 @@ func run() error {
 		return fmt.Errorf("create coordinator client: %w", err)
 	}
 	defer coordinatorConnection.Close()
-	if err := migrations.Up(ctx, db); err != nil {
-		return fmt.Errorf("apply migrations: %w", err)
+	if cfg.Env == config.Production {
+		if err := security.CheckRuntimeRole(ctx, db, cfg.Service); err != nil {
+			return err
+		}
+		if err := migrations.Verify(ctx, db, cfg.EventsEnabled); err != nil {
+			return err
+		}
+	} else {
+		if err := migrations.Up(ctx, db); err != nil {
+			return fmt.Errorf("apply migrations: %w", err)
+		}
+		if err := migrations.ConfigureEventStream(ctx, db, cfg.EventsEnabled); err != nil {
+			return err
+		}
 	}
-	if err := migrations.ConfigureEventStream(ctx, db, cfg.EventsEnabled); err != nil {
-		return err
-	}
+
 	if cfg.EventsEnabled {
 		writer, err := eventstream.NewKafkaWriter(cfg.KafkaBrokers, cfg.KafkaTopic)
 		if err != nil {

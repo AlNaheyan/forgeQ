@@ -358,6 +358,12 @@ func load(service string, lookup lookupFunc) (Config, error) {
 		}
 	}
 
+	if cfg.Env == Production && service != "worker" {
+		if err := security.ValidateDatabaseURL(cfg.DatabaseURL); err != nil {
+			return Config{}, err
+		}
+	}
+
 	return cfg, nil
 }
 
