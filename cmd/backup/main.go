@@ -60,7 +60,16 @@ func run(ctx context.Context) error {
 		}
 		return backup.RestorePostgres(ctx, s, m, dsn, "", ids...)
 	}
+	timeout := 30 * time.Minute
+	if value := os.Getenv("BACKUP_TIMEOUT"); value != "" {
+		timeout, e = time.ParseDuration(value)
+		if e != nil || timeout < time.Second || timeout > 24*time.Hour {
+			return errors.New("BACKUP_TIMEOUT must be between 1s and 24h")
+		}
+	}
 	operation := func(ctx context.Context) error {
+		ctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
 		if command == "retention" {
 			daily, e := strconv.Atoi(os.Getenv("BACKUP_RETENTION_DAILY"))
 			if e != nil {
