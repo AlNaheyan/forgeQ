@@ -133,6 +133,13 @@ services:
     depends_on:
       api:
         condition: service_started
+  alertmanager:
+    volumes:
+      - ./security/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ${FORGEQ_MONITOR_SECRETS_DIR:?set monitoring-only secrets directory}:/run/forgeq:ro
+    depends_on:
+      api:
+        condition: service_started
   grafana:
     cpus: 0.5
     mem_limit: 256m

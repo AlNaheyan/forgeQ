@@ -1,0 +1,15 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: approved-operator
+  group_by: [alertname, job]
+  group_wait: 10s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: approved-operator
+    webhook_configs:
+      - url_file: /run/forgeq/alert-webhook-url
+        send_resolved: true

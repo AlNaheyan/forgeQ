@@ -129,6 +129,18 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    command: ["--config.file=/etc/alertmanager/alertmanager.yml", "--storage.path=/alertmanager"]
+    ports:
+      - "127.0.0.1:9093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./secrets:/etc/forgequeue/secrets:ro
+      - alertmanager-data:/alertmanager
+    restart: unless-stopped
+
+
   grafana:
     image: grafana/grafana:12.2.0
     environment:
@@ -174,3 +186,4 @@ volumes:
   redis-data:
   prometheus-data:
   grafana-data:
+  alertmanager-data:
