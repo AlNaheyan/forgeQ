@@ -4,6 +4,7 @@ import argparse
 import csv
 import io
 import json
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -35,7 +36,10 @@ def scan(kind, directory, image=None):
         (directory / 'secrets.json').write_text('{"history": "passed", "worktree": "passed"}\n')
     elif kind == 'dependencies':
         run(['govulncheck', '-json', './...'], directory / 'govulncheck.json')
-        run(['go-licenses', 'report', './...'], directory / 'licenses.csv')
+        module = re.search(r'^module\s+(\S+)', Path('go.mod').read_text(), re.MULTILINE)
+        if not module:
+            raise RuntimeError('missing root module identity')
+        run(['go-licenses', 'report', '--ignore=' + module.group(1), './...'], directory / 'licenses.csv')
         messages = []
         data = (directory / 'govulncheck.json').read_text().strip()
         decoder = json.JSONDecoder()
