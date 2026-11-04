@@ -73,6 +73,7 @@ func run() error {
 		LeaseRenewInterval: cfg.LeaseRenewInterval,
 		JobTimeout:         cfg.JobTimeout,
 		JobTypes:           cfg.WorkerJobTypes,
+		RequireTenant:      cfg.Env == config.Production,
 	}, broker, workerpkg.BuiltInHandlers(), logger)
 	if err != nil {
 		return fmt.Errorf("initialize worker: %w", err)

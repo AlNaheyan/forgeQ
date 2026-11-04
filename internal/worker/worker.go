@@ -37,6 +37,7 @@ type Config struct {
 	LeaseRenewInterval time.Duration
 	JobTimeout         time.Duration
 	JobTypes           []string
+	RequireTenant      bool
 }
 
 type Worker struct {
@@ -188,6 +189,11 @@ func (w *Worker) execute(ctx context.Context, job jobs.Job, handler Handler) {
 	jobCtx, cancelJob := context.WithTimeout(context.WithoutCancel(ctx), w.config.JobTimeout)
 	defer cancelJob()
 	executionCtx := withAttempt(jobCtx, job.AttemptCount)
+	executionCtx = withMetadata(executionCtx, ExecutionMetadata{TenantID: job.TenantID, JobID: job.ID, JobType: job.Type, SubmissionKey: job.IdempotencyKey, Attempt: job.AttemptCount, LeaseGeneration: job.LeaseGeneration})
+	if w.config.RequireTenant && job.TenantID == "" {
+		w.logger.Error("job has no tenant identity; execution refused", "job_id", job.ID)
+		return
+	}
 	if job.TenantID != "" {
 		executionCtx = tenant.WithPrincipal(executionCtx, tenant.Principal{ID: job.TenantID})
 	}
