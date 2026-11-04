@@ -11,11 +11,13 @@ case "${1:?tool group required}" in
     # Release archive checksum must be supplied from the reviewed lock file.
     python3 scripts/ci-download.py protoc
     ;;
-  scan)
+  scan|source-scan)
     go install github.com/zricethezav/gitleaks/v8@v8.24.3
-    go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+    go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
     go install github.com/google/go-licenses/v2@v2.0.1
-    go install github.com/aquasecurity/trivy/cmd/trivy@v0.61.1
+    if [[ "$1" == scan ]]; then
+      go install github.com/aquasecurity/trivy/cmd/trivy@v0.61.1
+    fi
     ;;
   *) exit 2 ;;
 esac

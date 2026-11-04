@@ -18,7 +18,12 @@ def run(command, output=None):
     if output is not None and result.stdout.strip():
         output.write_bytes(result.stdout)
     if result.returncode:
-        raise RuntimeError(f'{Path(command[0]).name}: scanner exited {result.returncode}')
+        reason = ''
+        if b'panic:' in result.stderr:
+            reason = ' (scanner panic)'
+        elif b'fatal error:' in result.stderr:
+            reason = ' (runtime fatal error)'
+        raise RuntimeError(f'{Path(command[0]).name}: scanner exited {result.returncode}{reason}')
     if output is not None:
         if not result.stdout.strip():
             raise RuntimeError(f'{Path(command[0]).name}: scanner produced no report')

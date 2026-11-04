@@ -60,5 +60,12 @@ class ScanTests(unittest.TestCase):
                 scan.run(['go-licenses', 'report'])
             self.assertEqual(str(error.exception), 'go-licenses: scanner exited 2')
 
+    def test_scanner_panic_is_reported_without_error_text(self):
+        result = subprocess.CompletedProcess([], 2, b'', b'panic: private-value-do-not-print')
+        with patch.object(scan.shutil, 'which', return_value='/tool'), patch.object(scan.subprocess, 'run', return_value=result):
+            with self.assertRaises(RuntimeError) as error:
+                scan.run(['govulncheck'])
+            self.assertEqual(str(error.exception), 'govulncheck: scanner exited 2 (scanner panic)')
+
 if __name__ == '__main__':
     unittest.main()
