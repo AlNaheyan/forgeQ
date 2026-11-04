@@ -64,3 +64,31 @@ groups:
         annotations:
           summary: "Opt-in retention transactions are failing"
           runbook: "deployments/RUNBOOK.md#retention-and-disk-growth"
+      - alert: ForgeQueueCertificateExpiring
+        expr: forgequeue_tls_certificate_not_after_timestamp_seconds - time() < 1209600
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "A loaded ForgeQ TLS certificate expires within fourteen days"
+          runbook: "deployments/RUNBOOK.md#certificate-expiry"
+      - alert: ForgeQueueBackupStale
+        expr: time() - forgequeue_backup_last_success_timestamp_seconds > 93600
+        for: 10m
+        labels: {severity: critical}
+        annotations:
+          summary: "No successful encrypted backup upload in the last 26 hours"
+          runbook: "deployments/RUNBOOK.md#backup-stale-or-failed"
+      - alert: ForgeQueueBackupSnapshotStale
+        expr: time() - forgequeue_backup_last_snapshot_timestamp_seconds > 93600
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "The latest backup snapshot is more than 26 hours old"
+          runbook: "deployments/RUNBOOK.md#backup-stale-or-failed"
+      - alert: ForgeQueueBackupFailed
+        expr: increase(forgequeue_backup_runs_total{outcome="failure"}[30m]) > 0
+        for: 0m
+        labels: {severity: critical}
+        annotations:
+          summary: "An encrypted backup operation failed"
+          runbook: "deployments/RUNBOOK.md#backup-stale-or-failed"
