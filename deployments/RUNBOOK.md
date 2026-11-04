@@ -83,4 +83,27 @@ free space. They prevent repeated effects. Backups and external audit/log/Kafka
 retention remain operator responsibilities.
 
 Prometheus evaluates the supplied alert rules, but external paging/Alertmanager
-routing must be configured separately before relying on incident notifications.
+routes notifications to the local mock receiver in development. Start it with
+`python3 deployments/alertmanager/mock-alert-receiver.py` before using the local
+monitoring stack, then inspect sanitized firing and resolution summaries at
+`http://127.0.0.1:8088/events`. This receiver is a test sink, not an incident
+destination. Production Compose selects `deployments/security/alertmanager.yml`,
+which reads an approved HTTPS webhook URL from the monitoring secret directory.
+Set the recipient, on-call owner and escalation route before relying on paging.
+
+## Backup stale or failed
+
+Check the backup command exit status, completed manifest timestamp, storage
+availability and encryption key access. A stale-success alert means no upload
+has completed within 26 hours; compare snapshot and upload timestamps separately.
+Retry only after resolving the underlying cause. Never delete an older restored
+checkpoint to silence this alert. A checksum alone does not prove a backup can
+restore; use the isolated restore drill and its recovery receipt.
+
+## Certificate expiry
+
+Identify the expiring endpoint and role from bounded labels, inspect the mounted
+certificate chain and issuer, then stage a replacement with overlapping trust.
+This deployment rotates certificates by coordinated restart and can interrupt
+active channels. Verify each service's health and authenticated scrape after
+restart; do not remove the old CA until all clients have moved.
