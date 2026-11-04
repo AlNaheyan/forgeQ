@@ -17,7 +17,9 @@
     {"id": 12, "title": "Active Jobs", "type": "stat", "gridPos": {"h": 5, "w": 4, "x": 20, "y": 8}, "targets": [{"expr": "max(forgequeue_active_jobs)"}]},
     {"id": 13, "title": "Lease Expirations", "type": "timeseries", "gridPos": {"h": 7, "w": 8, "x": 0, "y": 13}, "targets": [{"expr": "sum(rate(forgequeue_lease_expirations_total[5m]))", "legendFormat": "expirations/s"}]},
     {"id": 14, "title": "API P95 Latency", "type": "timeseries", "gridPos": {"h": 7, "w": 8, "x": 8, "y": 13}, "fieldConfig": {"defaults": {"unit": "s"}}, "targets": [{"expr": "histogram_quantile(0.95, sum(rate(forgequeue_api_request_duration_seconds_bucket[5m])) by (le, route))", "legendFormat": "{{route}}"}]},
-    {"id": 15, "title": "Assignments by Worker", "type": "timeseries", "gridPos": {"h": 7, "w": 8, "x": 16, "y": 13}, "targets": [{"expr": "sum(rate(forgequeue_jobs_assigned_total[5m])) by (worker_id)", "legendFormat": "{{worker_id}}"}]}
+    {"id": 15, "title": "Assignments by Worker", "type": "timeseries", "gridPos": {"h": 7, "w": 8, "x": 16, "y": 13}, "targets": [{"expr": "sum(rate(forgequeue_jobs_assigned_total[5m])) by (worker_id)", "legendFormat": "{{worker_id}}"}]},
+    {"id": 16, "title": "Backup freshness", "description": "Values are Unix timestamps; missing series means backup status telemetry is unavailable.", "type": "timeseries", "gridPos": {"h": 7, "w": 12, "x": 0, "y": 20}, "targets": [{"expr": "forgequeue_backup_last_success_timestamp_seconds", "legendFormat": "last upload"}, {"expr": "forgequeue_backup_last_snapshot_timestamp_seconds", "legendFormat": "last snapshot"}]},
+    {"id": 17, "title": "TLS certificate expiry", "description": "Expiry timestamps by bounded endpoint and role labels.", "type": "timeseries", "gridPos": {"h": 7, "w": 12, "x": 12, "y": 20}, "targets": [{"expr": "forgequeue_tls_certificate_not_after_timestamp_seconds", "legendFormat": "{{endpoint}} / {{role}}"}]}
   ],
   "refresh": "5s",
   "schemaVersion": 41,
