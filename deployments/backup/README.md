@@ -15,6 +15,9 @@ Configure `BACKUP_STORAGE_KIND=local`, `BACKUP_LOCAL_ROOT` (private directory),
 `BACKUP_DATABASE_MAJOR`. Both files must be regular, private (0600), and <=64 KiB;
 mounted-secret symlinks are accepted after validating their regular-file target.
 The upload runtime receives public recipients only, never the restore identity.
+Scope future storage credentials to this installation prefix: uploader put/get,
+retention list/get/delete, and restore get plus put for restore receipts. Keep
+retention deletion credentials separately controlled; no bucket-wide delete.
 The backup database role needs CONNECT, schema USAGE and SELECT on all queue
 application tables and sequences; it must not have DDL, mutation or role-admin
 rights. Production database connections require verified TLS and root CA.
@@ -39,7 +42,12 @@ lock; stop backup/retention before restoring a selected object.
 Retention is opt-in: set `BACKUP_RETENTION_DAILY=7` and
 `BACKUP_RETENTION_WEEKLY=4`, then `backup retention` to print a dry-run plan.
 Only `BACKUP_RETENTION_APPLY=true` applies it, at most 100 exact objects per run.
-The newest checksum-verified complete snapshot always survives. Keep newest
+The newest checksum-verified complete snapshot and newest successfully restored
+snapshot always survive. No deletion occurs until a matching successful restore
+receipt exists. Restore publishes an immutable `.restored.json` receipt after
+decryption and transactional pg_restore; publish failure is reported even though
+the isolated destination may already contain the restored data. Receipts are
+trusted operational records, not signatures or application readiness proof. Keep newest
 snapshots in UTC daily and ISO-week buckets; invalid/incomplete objects remain
 for investigation. Manifest deletion precedes archive deletion so interruption
 cannot leave a completed manifest pointing at an intentionally removed archive.

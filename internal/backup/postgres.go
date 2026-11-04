@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 )
 
@@ -53,7 +54,7 @@ func DumpPostgres(dsn string) func(context.Context, io.Writer) error {
 // There is deliberately no destructive overwrite option.
 func RestorePostgres(ctx context.Context, s Storage, m Manifest, dsn, temp string, ids ...age.Identity) error {
 	u, e := url.Parse(dsn)
-	if e != nil || (u.Scheme != "postgres" && u.Scheme != "postgresql") || (u.Hostname() != "127.0.0.1" && u.Hostname() != "localhost" && u.Hostname() != "::1") || !strings.HasPrefix(strings.TrimPrefix(u.Path, "/"), "forgeq_restore_") {
+	if e != nil || (u.Scheme != "postgres" && u.Scheme != "postgresql") || (u.Hostname() != "127.0.0.1" && u.Hostname() != "localhost" && u.Hostname() != "::1") || !regexp.MustCompile(`^forgeq_restore_[a-z0-9_]{1,48}$`).MatchString(strings.TrimPrefix(u.Path, "/")) {
 		return errors.New("restore requires isolated loopback forgeq_restore_ database")
 	}
 	for key := range u.Query() {
@@ -89,7 +90,7 @@ func RestorePostgres(ctx context.Context, s Storage, m Manifest, dsn, temp strin
 	if c.Run() != nil {
 		return errors.New("pg_restore failed")
 	}
-	return nil
+	return recordRestore(ctx, s, m)
 }
 
 // libpq does not expand a URI in PGDATABASE. Split validated URLs into

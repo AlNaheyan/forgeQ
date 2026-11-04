@@ -9,7 +9,7 @@ import (
 )
 
 func TestRestoreScope(t *testing.T) {
-	for _, dsn := range []string{"postgres://host/forgeq_restore_a", "postgres://localhost/production", "postgres://localhost/forgeq_restore_a?host=remote", "garbage"} {
+	for _, dsn := range []string{"postgres://host/forgeq_restore_a", "postgres://localhost/production", "postgres://localhost/forgeq_restore_a?host=remote", "postgres://localhost/forgeq_restore_x%3Dhost%3Dremote", "garbage"} {
 		if RestorePostgres(context.Background(), nil, Manifest{}, dsn, t.TempDir()) == nil {
 			t.Fatal("unsafe destination")
 		}

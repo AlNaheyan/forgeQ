@@ -35,13 +35,25 @@ func PlanRetention(ctx context.Context, s Storage, prefix string, p Retention) (
 		}
 	}
 	sort.Slice(usable, func(i, j int) bool { return usable[i].Snapshot.After(usable[j].Snapshot) })
+	// Without a successful decrypt/restore receipt, retention is dry protection:
+	// checksum validity alone cannot prove the key is recoverable.
+	restoredObject := ""
+	for _, m := range usable {
+		if !restoredAt(ctx, s, m).IsZero() {
+			restoredObject = m.Object
+			break
+		}
+	}
+	if restoredObject == "" {
+		return nil, nil
+	}
 	days, weeks := map[string]bool{}, map[string]bool{}
 	var plan []string
 	for i, m := range usable {
 		day := m.Snapshot.UTC().Format("2006-01-02")
 		y, w := m.Snapshot.UTC().ISOWeek()
 		week := fmtWeek(y, w)
-		keep := i == 0
+		keep := i == 0 || m.Object == restoredObject
 		if !days[day] && len(days) < p.Daily {
 			days[day] = true
 			keep = true
@@ -51,6 +63,14 @@ func PlanRetention(ctx context.Context, s Storage, prefix string, p Retention) (
 			keep = true
 		}
 		if !keep && len(plan)+2 <= p.MaxDelete {
+			// Keep receipts permanently unless their archive itself is retained;
+			// include exact receipt cleanup in the same bounded plan.
+			if !restoredAt(ctx, s, m).IsZero() {
+				if len(plan)+3 > p.MaxDelete {
+					continue
+				}
+				plan = append(plan, m.Object+".restored.json")
+			}
 			plan = append(plan, m.Object+".json", m.Object)
 		}
 	}
