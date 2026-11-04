@@ -2,10 +2,10 @@ package security
 
 import (
 	"context"
+	"crypto/x509"
 	"database/sql"
 	"errors"
 	"net/url"
-	"os"
 )
 
 // ValidateDatabaseURL requires explicit authenticated, verified TLS connections.
@@ -21,11 +21,15 @@ func ValidateDatabaseURL(raw string) error {
 	if q.Get("sslmode") != "verify-full" || len(q["sslmode"]) != 1 || q.Get("sslrootcert") == "" || len(q["sslrootcert"]) != 1 {
 		return errors.New("DATABASE_URL requires sslmode=verify-full and sslrootcert")
 	}
-	f, err := os.Open(q.Get("sslrootcert"))
+	caPEM, err := readCredentialFile("DATABASE_URL root certificate", q.Get("sslrootcert"), false)
 	if err != nil {
-		return errors.New("DATABASE_URL root certificate is unreadable")
+		return errors.New("DATABASE_URL root certificate is unreadable or invalid")
 	}
-	defer f.Close()
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(caPEM) {
+		return errors.New("DATABASE_URL root certificate is invalid")
+	}
+
 	return nil
 }
 
@@ -41,10 +45,12 @@ func CheckRuntimeRole(ctx context.Context, db *sql.DB, service string) error {
  OR EXISTS(SELECT 1 FROM pg_roles WHERE rolname <> current_user AND rolname <> $1 AND pg_has_role(current_user,oid,'MEMBER'))
  OR
  EXISTS(SELECT 1 FROM pg_roles WHERE (rolname=current_user OR pg_has_role(current_user,oid,'MEMBER')) AND (rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls))
- OR has_database_privilege(current_user,current_database(),'CREATE')
+ OR has_database_privilege(current_user,current_database(),'CREATE,TEMPORARY')
  OR EXISTS(SELECT 1 FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname <> 'information_schema' AND has_schema_privilege(current_user,oid,'CREATE'))
  OR EXISTS(SELECT 1 FROM pg_class WHERE relnamespace='public'::regnamespace AND relowner=(SELECT oid FROM pg_roles WHERE rolname=current_user))
  OR has_table_privilege(current_user,'api_keys','INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+ OR EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid='api_keys'::regclass AND attnum>0 AND NOT attisdropped AND has_column_privilege(current_user,'api_keys',attname,'INSERT,UPDATE,REFERENCES'))
+ OR EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid='tenants'::regclass AND attnum>0 AND NOT attisdropped AND attname NOT IN ('window_start','window_count') AND has_column_privilege(current_user,'tenants',attname,'INSERT,UPDATE,REFERENCES'))
  OR has_table_privilege(current_user,'tenants','INSERT,DELETE,TRUNCATE,REFERENCES,TRIGGER')
  OR has_column_privilege(current_user,'tenants','max_pending','UPDATE')
  OR has_column_privilege(current_user,'tenants','max_concurrent','UPDATE')

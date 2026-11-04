@@ -82,12 +82,22 @@ func TestRuntimeRolesIntegration(t *testing.T) {
 		if err := migrations.Verify(ctx, db, false); err == nil {
 			t.Fatal("event config mismatch accepted")
 		}
-		for _, statement := range []string{"CREATE TABLE denied(id int)", "ALTER TABLE jobs ADD COLUMN denied int", "UPDATE api_keys SET operator=true", "UPDATE tenants SET max_pending=9999", "UPDATE event_stream_config SET enabled=false", "DELETE FROM schema_migrations"} {
+		for _, statement := range []string{"CREATE TABLE denied(id int)", "CREATE TEMP TABLE denied_temp(id int)", "ALTER TABLE jobs ADD COLUMN denied int", "UPDATE api_keys SET operator=true", "UPDATE tenants SET max_pending=9999", "UPDATE event_stream_config SET enabled=false", "DELETE FROM schema_migrations"} {
 			if _, err := db.ExecContext(ctx, statement); err == nil {
 				t.Fatalf("%s accepted privileged operation %s", role, statement)
 			}
 		}
 	}
+	if _, err := admin.ExecContext(ctx, "GRANT UPDATE(operator) ON api_keys TO forgeq_api"); err != nil {
+		t.Fatal(err)
+	}
+	if err := security.CheckRuntimeRole(ctx, scoped["api"], "api"); err == nil {
+		t.Fatal("column-level credential administration passed startup")
+	}
+	if _, err := admin.ExecContext(ctx, "REVOKE UPDATE(operator) ON api_keys FROM forgeq_api"); err != nil {
+		t.Fatal(err)
+	}
+
 	if err := security.CheckRuntimeRole(ctx, admin, "api"); err == nil {
 		t.Fatal("admin runtime accepted")
 	}

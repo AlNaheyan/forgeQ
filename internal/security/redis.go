@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
-	"os"
 )
 
 func RedisTLS(enabled bool, caFile, serverName string, production bool) (*tls.Config, error) {
@@ -17,7 +16,7 @@ func RedisTLS(enabled bool, caFile, serverName string, production bool) (*tls.Co
 	if caFile == "" || serverName == "" {
 		return nil, errors.New("Redis TLS requires CA file and server name")
 	}
-	raw, err := os.ReadFile(caFile)
+	raw, err := readCredentialFile("TLS_CA_FILE", caFile, false)
 	if err != nil {
 		return nil, errors.New("Redis CA is unreadable")
 	}

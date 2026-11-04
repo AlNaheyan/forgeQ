@@ -11,7 +11,15 @@ import (
 
 // Certificate loads a matched, currently valid certificate without exposing PEM or paths.
 func Certificate(certFile, keyFile string) (tls.Certificate, error) {
-	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	certPEM, err := readCredentialFile("TLS_CERT_FILE", certFile, false)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	keyPEM, err := readCredentialFile("TLS_KEY_FILE", keyFile, true)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	cert, err := tls.X509KeyPair(certPEM, keyPEM)
 	if err != nil {
 		return tls.Certificate{}, errors.New("TLS certificate/key could not be loaded")
 	}

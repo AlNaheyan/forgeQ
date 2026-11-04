@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"forgequeue/internal/platform"
+	"forgequeue/internal/security"
 	"forgequeue/internal/tenant"
 	"forgequeue/migrations"
 )
@@ -45,7 +46,19 @@ func run() error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	db, err := platform.OpenPostgres(ctx, os.Getenv("DATABASE_URL"))
+	dsn, err := security.Secret("DATABASE_URL", os.Getenv("DATABASE_URL"), os.Getenv("DATABASE_URL_FILE"))
+	if err != nil {
+		return err
+	}
+	if dsn == "" {
+		return fmt.Errorf("DATABASE_URL is required")
+	}
+	if os.Getenv("APP_ENV") == "production" {
+		if err := security.ValidateDatabaseURL(dsn); err != nil {
+			return err
+		}
+	}
+	db, err := platform.OpenPostgres(ctx, dsn)
 	if err != nil {
 		return err
 	}

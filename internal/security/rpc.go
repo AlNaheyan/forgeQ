@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
-	"os"
 	"regexp"
 	"strings"
 
@@ -44,7 +43,7 @@ func ServiceTLS(caFile, certFile, keyFile, serverName string, server bool) (*tls
 	if caFile == "" || certFile == "" || keyFile == "" || (!server && serverName == "") {
 		return nil, errors.New("service TLS requires CA, certificate, key and client server name")
 	}
-	ca, err := os.ReadFile(caFile)
+	ca, err := readCredentialFile("TLS_CA_FILE", caFile, false)
 	if err != nil {
 		return nil, errors.New("service CA could not be loaded")
 	}
