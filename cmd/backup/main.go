@@ -40,8 +40,17 @@ func run(ctx context.Context) error {
 	if e != nil {
 		return e
 	}
+	timeout := 30 * time.Minute
+	if value := os.Getenv("BACKUP_TIMEOUT"); value != "" {
+		timeout, e = time.ParseDuration(value)
+		if e != nil || timeout < time.Second || timeout > 24*time.Hour {
+			return errors.New("BACKUP_TIMEOUT must be between 1s and 24h")
+		}
+	}
 	command := os.Args[1]
 	if command == "restore" {
+		ctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
 		m, e := backup.ReadManifest(ctx, s, os.Getenv("BACKUP_MANIFEST_KEY"))
 		if e != nil {
 			return e
@@ -59,13 +68,6 @@ func run(ctx context.Context) error {
 			return e
 		}
 		return backup.RestorePostgres(ctx, s, m, dsn, "", ids...)
-	}
-	timeout := 30 * time.Minute
-	if value := os.Getenv("BACKUP_TIMEOUT"); value != "" {
-		timeout, e = time.ParseDuration(value)
-		if e != nil || timeout < time.Second || timeout > 24*time.Hour {
-			return errors.New("BACKUP_TIMEOUT must be between 1s and 24h")
-		}
 	}
 	operation := func(ctx context.Context) error {
 		ctx, cancel := context.WithTimeout(ctx, timeout)
