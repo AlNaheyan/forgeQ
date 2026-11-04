@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"forgequeue/internal/jobs"
+	"forgequeue/internal/jobtypes"
 	"forgequeue/internal/queue"
 	"forgequeue/internal/tenant"
 )
@@ -38,6 +39,7 @@ type Config struct {
 	JobTimeout         time.Duration
 	JobTypes           []string
 	RequireTenant      bool
+	MaxResultBytes     int
 }
 
 type Worker struct {
@@ -76,6 +78,12 @@ func NewWithBroker(config Config, broker Broker, handlers map[string]Handler, lo
 	}
 	if config.JobTimeout <= 0 {
 		config.JobTimeout = 5 * time.Minute
+	}
+	if config.MaxResultBytes == 0 {
+		config.MaxResultBytes = 1 << 20
+	}
+	if config.MaxResultBytes < 1 || config.MaxResultBytes > 1<<20 {
+		return nil, errors.New("worker result limit must be between 1 and 1048576 bytes")
 	}
 	if strings.TrimSpace(config.ID) == "" {
 		id, err := generateID()
@@ -207,7 +215,19 @@ func (w *Worker) execute(ctx context.Context, job jobs.Job, handler Handler) {
 		}
 		executionCtx = leaseSession.Context()
 	}
-	result, executionErr := executeSafely(executionCtx, handler, job.Payload)
+	var result any
+	var executionErr error
+	if _, known := jobtypes.Fixtures().Lookup(job.Type); known {
+		if err := jobtypes.Fixtures().Validate(job.Type, job.Payload); err != nil {
+			executionErr = &HandlerError{Code: FailureInvalidPayload, Cause: err}
+		}
+	}
+	if executionErr == nil {
+		result, executionErr = executeSafely(executionCtx, handler, job.Payload)
+	}
+	if errors.Is(executionCtx.Err(), context.DeadlineExceeded) {
+		executionErr = context.DeadlineExceeded
+	}
 	if leaseSession != nil {
 		if err := leaseSession.Stop(); err != nil {
 			w.logger.Warn("job lease lost; terminal result discarded",
@@ -222,18 +242,17 @@ func (w *Worker) execute(ctx context.Context, job jobs.Job, handler Handler) {
 	status := jobs.StatusSucceeded
 	var encodedResult []byte
 	lastError := ""
+	retryable := true
 	if executionErr != nil {
 		status = jobs.StatusFailed
-		lastError = executionErr.Error()
-		if len(lastError) > 4096 {
-			lastError = lastError[:4096]
-		}
+		code, retry := classifyFailure(executionErr)
+		lastError, retryable = string(code), retry
 	} else {
 		var err error
 		encodedResult, err = json.Marshal(result)
-		if err != nil {
+		if err != nil || len(encodedResult) > w.config.MaxResultBytes {
 			status = jobs.StatusFailed
-			lastError = fmt.Sprintf("encode job result: %v", err)
+			lastError, retryable = string(FailureResultInvalid), false
 		}
 	}
 
@@ -243,7 +262,7 @@ func (w *Worker) execute(ctx context.Context, job jobs.Job, handler Handler) {
 	if status == jobs.StatusSucceeded {
 		persistErr = w.broker.CompleteJob(finishCtx, w.config.ID, job.ID, encodedResult, job.LeaseGeneration)
 	} else {
-		persistErr = w.broker.FailJob(finishCtx, w.config.ID, job.ID, lastError, true, job.LeaseGeneration)
+		persistErr = w.broker.FailJob(finishCtx, w.config.ID, job.ID, lastError, retryable, job.LeaseGeneration)
 	}
 	if persistErr != nil {
 		w.logger.Error("job result persistence failed",
@@ -274,7 +293,7 @@ func (w *Worker) execute(ctx context.Context, job jobs.Job, handler Handler) {
 func executeSafely(ctx context.Context, handler Handler, payload json.RawMessage) (result any, err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			err = fmt.Errorf("job handler panic: %v", recovered)
+			err = &HandlerError{Code: FailurePanic}
 		}
 	}()
 	return handler.Execute(ctx, payload)

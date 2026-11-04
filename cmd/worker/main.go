@@ -74,6 +74,7 @@ func run() error {
 		JobTimeout:         cfg.JobTimeout,
 		JobTypes:           cfg.WorkerJobTypes,
 		RequireTenant:      cfg.Env == config.Production,
+		MaxResultBytes:     cfg.WorkerMaxResultBytes,
 	}, broker, workerpkg.BuiltInHandlers(), logger)
 	if err != nil {
 		return fmt.Errorf("initialize worker: %w", err)

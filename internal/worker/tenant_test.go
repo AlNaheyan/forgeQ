@@ -23,14 +23,14 @@ func (h identityHandler) Execute(ctx context.Context, _ json.RawMessage) (any, e
 }
 func TestWorkerTenantContextAndLogRedaction(t *testing.T) {
 	var logs bytes.Buffer
-	job := jobs.Job{ID: "job", TenantID: "tenant-test", Type: "sleep", Status: jobs.StatusRunning, AttemptCount: 1}
+	job := jobs.Job{ID: "job", TenantID: "tenant-test", Type: "sleep", Payload: json.RawMessage(`{}`), Status: jobs.StatusRunning, AttemptCount: 1}
 	repo := &memoryRepository{jobs: map[string]jobs.Job{"job": job}, completed: make(chan string, 1)}
 	w := &Worker{config: Config{ID: "worker", JobTimeout: time.Second}, broker: NewLocalBroker(repo, &finiteQueue{}), logger: slog.New(slog.NewTextHandler(&logs, nil))}
 	w.execute(context.Background(), job, identityHandler{t})
 	if strings.Contains(logs.String(), "secret-handler-payload") {
 		t.Fatal("shared worker log contains handler error")
 	}
-	if repo.jobs["job"].LastError != "secret-handler-payload" {
-		t.Fatal("tenant-owned durable error missing")
+	if repo.jobs["job"].LastError != "unclassified" {
+		t.Fatal("durable error was not safely classified")
 	}
 }

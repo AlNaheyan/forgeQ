@@ -80,13 +80,14 @@ type Config struct {
 	EventOutboxLease     time.Duration
 	EventBatchSize       int
 
-	DefaultMaxAttempts int
-	MaxQueueDepth      int
-	WorkerConcurrency  int
-	WorkerID           string
-	WorkerJobTypes     []string
-	WorkerPollInterval time.Duration
-	SchedulerStrategy  string
+	DefaultMaxAttempts   int
+	MaxQueueDepth        int
+	WorkerConcurrency    int
+	WorkerMaxResultBytes int
+	WorkerID             string
+	WorkerJobTypes       []string
+	WorkerPollInterval   time.Duration
+	SchedulerStrategy    string
 
 	LogLevel string
 }
@@ -223,6 +224,12 @@ func load(service string, lookup lookupFunc) (Config, error) {
 	}
 	if cfg.JobTimeout, err = durationValue(lookup, "JOB_TIMEOUT", 5*time.Minute); err != nil {
 		return Config{}, err
+	}
+	if cfg.WorkerMaxResultBytes, err = intValue(lookup, "WORKER_MAX_RESULT_BYTES", 1<<20, 1); err != nil {
+		return Config{}, err
+	}
+	if cfg.WorkerMaxResultBytes > 1<<20 {
+		return Config{}, errors.New("WORKER_MAX_RESULT_BYTES must not exceed 1048576")
 	}
 	if cfg.PostgresConnMaxIdle, err = durationValue(lookup, "POSTGRES_CONN_MAX_IDLE", 5*time.Minute); err != nil {
 		return Config{}, err
