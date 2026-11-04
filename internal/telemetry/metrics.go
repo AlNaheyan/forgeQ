@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"forgequeue/internal/backup"
 	"net/http"
 	"strconv"
 	"time"
@@ -37,6 +38,52 @@ type Metrics struct {
 	JobAttempts            prometheus.Histogram
 	JobsAssigned           *prometheus.CounterVec
 	APIRequestDuration     *prometheus.HistogramVec
+}
+
+type backupStatusCollector struct{ path string }
+
+func (c backupStatusCollector) Describe(ch chan<- *prometheus.Desc) {
+	for _, d := range backupStatusDescs {
+		ch <- d
+	}
+}
+func (c backupStatusCollector) Collect(ch chan<- prometheus.Metric) {
+	status, err := backup.ReadStatus(c.path)
+	available := float64(0)
+	if err == nil {
+		available = 1
+	}
+	ch <- prometheus.MustNewConstMetric(backupStatusDescs[0], prometheus.GaugeValue, available)
+	if err != nil {
+		return
+	}
+	ch <- prometheus.MustNewConstMetric(backupStatusDescs[1], prometheus.GaugeValue, float64(status.LastSuccess))
+	ch <- prometheus.MustNewConstMetric(backupStatusDescs[2], prometheus.GaugeValue, float64(status.LastSnapshot))
+	ch <- prometheus.MustNewConstMetric(backupStatusDescs[3], prometheus.GaugeValue, float64(status.ArchiveBytes))
+	ch <- prometheus.MustNewConstMetric(backupStatusDescs[4], prometheus.GaugeValue, status.DurationSeconds)
+	ch <- prometheus.MustNewConstMetric(backupStatusDescs[5], prometheus.CounterValue, float64(status.Successes), "success")
+	ch <- prometheus.MustNewConstMetric(backupStatusDescs[5], prometheus.CounterValue, float64(status.Failures), "failure")
+}
+
+var backupStatusDescs = []*prometheus.Desc{
+	prometheus.NewDesc("forgequeue_backup_status_available", "Whether the durable backup status file is readable.", nil, nil),
+	prometheus.NewDesc("forgequeue_backup_last_success_timestamp_seconds", "Unix time of last completed encrypted upload.", nil, nil),
+	prometheus.NewDesc("forgequeue_backup_last_snapshot_timestamp_seconds", "Unix time of last database snapshot start.", nil, nil),
+	prometheus.NewDesc("forgequeue_backup_archive_bytes", "Size of the most recent completed encrypted archive.", nil, nil),
+	prometheus.NewDesc("forgequeue_backup_duration_seconds", "Duration of the most recent backup attempt.", nil, nil),
+	prometheus.NewDesc("forgequeue_backup_runs_total", "Backup operation attempts by outcome.", []string{"outcome"}, nil),
+}
+
+// SetBackupStatusFile adds a bounded local status-file collector. Missing or
+// invalid files produce an explicit availability=0 metric for alerting.
+func (m *Metrics) SetBackupStatusFile(path string) error {
+	if path == "" {
+		return nil
+	}
+	if err := m.registry.Register(backupStatusCollector{path: path}); err != nil {
+		return err
+	}
+	return nil
 }
 
 // NewMetrics creates all ForgeQueue collectors and registers Go/process

@@ -72,11 +72,18 @@ groups:
           summary: "A loaded ForgeQ TLS certificate expires within fourteen days"
           runbook: "deployments/RUNBOOK.md#certificate-expiry"
       - alert: ForgeQueueBackupStale
-        expr: time() - forgequeue_backup_last_success_timestamp_seconds > 93600
+        expr: forgequeue_backup_status_available == 0 or forgequeue_backup_last_success_timestamp_seconds == 0 or time() - forgequeue_backup_last_success_timestamp_seconds > 93600
         for: 10m
         labels: {severity: critical}
         annotations:
           summary: "No successful encrypted backup upload in the last 26 hours"
+          runbook: "deployments/RUNBOOK.md#backup-stale-or-failed"
+      - alert: ForgeQueueBackupStatusUnavailable
+        expr: forgequeue_backup_status_available{job="forgequeue-coordinator"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "Coordinator cannot read durable backup status"
           runbook: "deployments/RUNBOOK.md#backup-stale-or-failed"
       - alert: ForgeQueueBackupSnapshotStale
         expr: time() - forgequeue_backup_last_snapshot_timestamp_seconds > 93600

@@ -96,6 +96,9 @@ Set the recipient, on-call owner and escalation route before relying on paging.
 Check the backup command exit status, completed manifest timestamp, storage
 availability and encryption key access. A stale-success alert means no upload
 has completed within 26 hours; compare snapshot and upload timestamps separately.
+If `ForgeQueueBackupStatusUnavailable` fires, check that the backup process and
+coordinator share the configured status volume and that the coordinator has
+read-only access to `status.json`.
 Retry only after resolving the underlying cause. Never delete an older restored
 checkpoint to silence this alert. A checksum alone does not prove a backup can
 restore; use the isolated restore drill and its recovery receipt.

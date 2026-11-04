@@ -66,6 +66,7 @@ services:
     security_opt: [no-new-privileges:true]
     volumes:
       - ${FORGEQ_COORDINATOR_SECRETS_DIR:?set coordinator-only secrets directory}:/run/forgeq:ro
+      - backup-status:/var/lib/forgeq-backup:ro
     environment:
       APP_ENV: production
       CONTROL_PLANE_TOKEN: ""
@@ -78,6 +79,7 @@ services:
       METRICS_TLS_CERT_FILE: /run/forgeq/metrics.crt
       METRICS_TLS_KEY_FILE: /run/forgeq/metrics.key
       METRICS_AUTH_TOKEN_FILE: /run/forgeq/metrics-token
+      BACKUP_STATUS_FILE: /var/lib/forgeq-backup/status.json
       REDIS_ADDR: redis:6379
       REDIS_USERNAME: ${REDIS_USERNAME:-default}
       REDIS_PASSWORD_FILE: /run/forgeq/redis-password
@@ -149,3 +151,6 @@ services:
       GF_SECURITY_ADMIN_PASSWORD__FILE: /run/forgeq/grafana-password
     volumes:
       - ${FORGEQ_GRAFANA_SECRETS_DIR:?set Grafana-only secrets directory}:/run/forgeq:ro
+
+volumes:
+  backup-status:

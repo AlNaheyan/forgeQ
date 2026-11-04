@@ -47,6 +47,9 @@ func run() error {
 		return fmt.Errorf("initialize logger: %w", err)
 	}
 	metrics := telemetry.NewMetrics()
+	if err := metrics.SetBackupStatusFile(os.Getenv("BACKUP_STATUS_FILE")); err != nil {
+		return fmt.Errorf("configure backup status metrics: %w", err)
+	}
 	if cfg.MetricsTLS != nil {
 		metrics.TLSCertificateNotAfter.WithLabelValues("metrics", "server").Set(float64(cfg.MetricsTLS.Certificates[0].Leaf.NotAfter.Unix()))
 	}

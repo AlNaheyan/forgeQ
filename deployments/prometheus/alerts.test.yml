@@ -48,6 +48,8 @@ tests:
     input_series:
       - series: 'forgequeue_tls_certificate_not_after_timestamp_seconds{job="forgequeue-coordinator",endpoint="grpc",role="server"}'
         values: '1000000 1000000 1000000 1000000 1000000 1000000 1000000 1000000 1000000 1000000 1000000 1000000 1000000'
+      - series: 'forgequeue_backup_status_available{job="forgequeue-coordinator"}'
+        values: '0 0 0 0 0 0 0 0 0 0 0 0 0'
     alert_rule_test:
       - eval_time: 12m
         alertname: ForgeQueueCertificateExpiring
@@ -56,3 +58,10 @@ tests:
             exp_annotations:
               summary: "A loaded ForgeQ TLS certificate expires within fourteen days"
               runbook: "deployments/RUNBOOK.md#certificate-expiry"
+      - eval_time: 2m
+        alertname: ForgeQueueBackupStatusUnavailable
+        exp_alerts:
+          - exp_labels: {job: forgequeue-coordinator, severity: critical}
+            exp_annotations:
+              summary: "Coordinator cannot read durable backup status"
+              runbook: "deployments/RUNBOOK.md#backup-stale-or-failed"

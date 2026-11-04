@@ -105,13 +105,15 @@ schema migration is introduced. Restores are isolated and never replace the
 source automatically. Unsupported manifests fail closed. Forward fixes preserve
 the age v1 format and manifest version or introduce explicit version readers.
 
-Wave24 telemetry handoff: completed manifests are the durable source for
-`forgequeue_backup_last_success_timestamp_seconds` (`uploaded`),
-`forgequeue_backup_last_snapshot_timestamp_seconds` (`snapshot`) and
-`forgequeue_backup_archive_bytes` (`size`). A future exporter must scan the owned
-prefix, reject invalid/incomplete manifests, select the latest verified snapshot,
-and preserve unknown/absent as unknown. `Runner.Observe(Manifest,duration,error)`
-is the in-process hook for runs_total outcome and duration histogram; a failed
-attempt never advances successful timestamps. Exporter/notification wiring is
-reserved for Wave24; this CLI does not pretend its short-lived memory can provide
-persistent scrape metrics. Monitor scheduler exit status until that is wired.
+Wave24 metrics use a durable status file because the backup CLI is short-lived.
+Set `BACKUP_STATUS_FILE` for `backup once` or `backup schedule` to a path on a
+shared status volume. The coordinator mounts that volume read-only at
+`/var/lib/forgeq-backup` and reads `/var/lib/forgeq-backup/status.json` when
+scraped. The file contains only timestamps, byte count, duration, and success or
+failure totals; it contains no object names, tenant data, secrets, or raw errors.
+Create the volume with write access for the backup process and read access for the
+coordinator. If it is absent, malformed, or unreadable, the coordinator publishes
+`forgequeue_backup_status_available=0` so monitoring alerts rather than treating
+missing state as healthy. `Runner.Observe` updates the file atomically after each
+attempt. A failure increments the failure count and preserves the last successful
+timestamps.

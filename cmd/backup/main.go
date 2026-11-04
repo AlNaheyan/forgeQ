@@ -99,7 +99,7 @@ func run(ctx context.Context) error {
 		if e != nil {
 			return e
 		}
-		r := backup.Runner{Store: s, Prefix: prefix, Recipients: recipients, KeyID: os.Getenv("BACKUP_KEY_ID"), Revision: os.Getenv("BACKUP_REVISION"), Schema: os.Getenv("BACKUP_SCHEMA"), DatabaseMajor: os.Getenv("BACKUP_DATABASE_MAJOR")}
+		r := backup.Runner{Store: s, Prefix: prefix, Recipients: recipients, KeyID: os.Getenv("BACKUP_KEY_ID"), Revision: os.Getenv("BACKUP_REVISION"), Schema: os.Getenv("BACKUP_SCHEMA"), DatabaseMajor: os.Getenv("BACKUP_DATABASE_MAJOR"), Observe: backup.StatusObserver(os.Getenv("BACKUP_STATUS_FILE"))}
 		m, e := r.Backup(ctx, backup.DumpPostgres(dsn))
 		if e == nil {
 			e = json.NewEncoder(os.Stdout).Encode(m)
