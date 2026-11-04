@@ -7,7 +7,7 @@ jobs and watch them run.
 
 ## Requirements
 
-- Go 1.23 or newer
+- Go 1.26.10 or newer
 - Docker with Docker Compose
 - OpenSSL for generating a local service credential
 
