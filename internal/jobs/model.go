@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"forgequeue/internal/jobtypes"
 	"strings"
 	"time"
 )
@@ -97,6 +98,9 @@ func ValidateInput(input CreateInput) error {
 	if payloadObject == nil {
 		return fmt.Errorf("%w: payload must be a JSON object", ErrInvalidJob)
 	}
+	if err := jobtypes.Fixtures().Validate(input.Type, input.Payload); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidJob, err)
+	}
 	if input.MaxAttempts < 1 || input.MaxAttempts > 100 {
 		return fmt.Errorf("%w: max_attempts must be between 1 and 100", ErrInvalidJob)
 	}
@@ -110,12 +114,8 @@ func ValidateInput(input CreateInput) error {
 }
 
 func SupportedType(jobType string) bool {
-	switch jobType {
-	case "sleep", "fail":
-		return true
-	default:
-		return false
-	}
+	_, ok := jobtypes.Fixtures().Lookup(jobType)
+	return ok
 }
 
 func CanTransition(from, to Status) bool {

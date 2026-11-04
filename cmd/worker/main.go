@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"forgequeue/internal/config"
+	"forgequeue/internal/jobtypes"
 	"forgequeue/internal/telemetry"
 	"forgequeue/internal/tenant"
 	workerpkg "forgequeue/internal/worker"
@@ -30,6 +31,11 @@ func run() error {
 	cfg, err := config.Load("worker")
 	if err != nil {
 		return fmt.Errorf("load configuration: %w", err)
+	}
+	for _, name := range cfg.WorkerJobTypes {
+		if _, ok := jobtypes.Fixtures().Lookup(name); !ok {
+			return fmt.Errorf("no shared descriptor for configured worker job type %q", name)
+		}
 	}
 	logger, err := telemetry.NewLogger(os.Stdout, "worker", cfg.LogLevel)
 	if err != nil {

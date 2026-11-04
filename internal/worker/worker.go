@@ -88,8 +88,11 @@ func NewWithBroker(config Config, broker Broker, handlers map[string]Handler, lo
 	}
 	selectedHandlers := make(map[string]Handler, len(config.JobTypes))
 	for _, jobType := range config.JobTypes {
+		if _, exists := selectedHandlers[jobType]; exists {
+			return nil, fmt.Errorf("duplicate worker job type %q", jobType)
+		}
 		handler, ok := handlers[jobType]
-		if !ok {
+		if !ok || handler == nil {
 			return nil, fmt.Errorf("worker does not have a handler for configured job type %q", jobType)
 		}
 		selectedHandlers[jobType] = handler
