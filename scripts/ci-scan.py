@@ -13,14 +13,15 @@ import tempfile
 
 def run(command, output=None):
     if not shutil.which(command[0]):
-        raise RuntimeError('required scanner unavailable')
+        raise RuntimeError(f'{Path(command[0]).name}: required scanner unavailable')
     result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if output is not None and result.stdout.strip():
+        output.write_bytes(result.stdout)
     if result.returncode:
-        raise RuntimeError('scanner reported findings or failed')
+        raise RuntimeError(f'{Path(command[0]).name}: scanner exited {result.returncode}')
     if output is not None:
         if not result.stdout.strip():
-            raise RuntimeError('scanner produced no report')
-        output.write_bytes(result.stdout)
+            raise RuntimeError(f'{Path(command[0]).name}: scanner produced no report')
 
 
 def scan(kind, directory, image=None):
@@ -35,7 +36,17 @@ def scan(kind, directory, image=None):
                     raise RuntimeError('missing secret report or findings')
         (directory / 'secrets.json').write_text('{"history": "passed", "worktree": "passed"}\n')
     elif kind == 'dependencies':
-        run(['govulncheck', '-json', './...'], directory / 'govulncheck.json')
+        report = directory / 'govulncheck.json'
+        try:
+            run(['govulncheck', '-json', './...'], report)
+        except RuntimeError as error:
+            # Only print validated public advisory identifiers, never scanner
+            # output or source paths. A non-zero exit still blocks the job.
+            if report.is_file():
+                ids = sorted(set(re.findall(r'"osv"\s*:\s*"(GO-\d{4}-\d+)"', report.read_text())))
+                if ids:
+                    raise RuntimeError('govulncheck reported advisories: ' + ', '.join(ids)) from error
+            raise
         module = re.search(r'^module\s+(\S+)', Path('go.mod').read_text(), re.MULTILINE)
         if not module:
             raise RuntimeError('missing root module identity')
@@ -49,7 +60,8 @@ def scan(kind, directory, image=None):
             data = data[end:].lstrip()
         # govulncheck emits pretty-printed JSON objects, not necessarily JSONL.
         if any('finding' in message for message in messages):
-            raise RuntimeError('dependency vulnerability findings')
+            ids = sorted({m['finding'].get('osv', '') for m in messages if 'finding' in m and re.fullmatch(r'GO-\d{4}-\d+', m['finding'].get('osv', ''))})
+            raise RuntimeError('dependency vulnerability findings' + (': ' + ', '.join(ids) if ids else ''))
         if not any('config' in message for message in messages):
             raise RuntimeError('missing vulnerability report')
         rows = list(csv.reader(io.StringIO((directory / 'licenses.csv').read_text())))
@@ -78,5 +90,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     try:
         scan(args.kind, args.output, args.image)
-    except (RuntimeError, OSError, ValueError):
-        raise SystemExit('Scan failed: findings, unavailable tool, or invalid report; raw output suppressed.')
+    except RuntimeError as error:
+        raise SystemExit(f'Scan failed: {error}; raw output suppressed.')
+    except (OSError, ValueError):
+        raise SystemExit('Scan failed: scanner output unavailable or invalid; raw output suppressed.')

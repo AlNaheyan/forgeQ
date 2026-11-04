@@ -42,5 +42,23 @@ class ScanTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 scan.run(['scanner'], Path(temp, 'report'))
 
+    def test_nonzero_vulnerability_report_exposes_only_advisory_ids(self):
+        secret = 'synthetic-secret-do-not-emit'
+        report = ('{"finding":{"osv":"GO-2025-1234"}}\n' + secret).encode()
+        result = subprocess.CompletedProcess([], 3, report, secret.encode())
+        with tempfile.TemporaryDirectory() as temp, patch.object(scan.shutil, 'which', return_value='/tool'), patch.object(scan.subprocess, 'run', return_value=result):
+            with self.assertRaises(RuntimeError) as error:
+                scan.scan('dependencies', Path(temp))
+            self.assertIn('GO-2025-1234', str(error.exception))
+            self.assertNotIn(secret, str(error.exception))
+
+    def test_nonzero_scanner_identifies_tool_without_raw_output(self):
+        secret = 'synthetic-secret-do-not-emit'
+        result = subprocess.CompletedProcess([], 2, b'', secret.encode())
+        with patch.object(scan.shutil, 'which', return_value='/tool'), patch.object(scan.subprocess, 'run', return_value=result):
+            with self.assertRaises(RuntimeError) as error:
+                scan.run(['go-licenses', 'report'])
+            self.assertEqual(str(error.exception), 'go-licenses: scanner exited 2')
+
 if __name__ == '__main__':
     unittest.main()
