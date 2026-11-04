@@ -1,17 +1,26 @@
-# Explicit overlay for the supported single-host deployment. Paths resolve
-# relative to docker-compose.yml; credentials must be supplied by the operator.
+# Explicit production overlay. Prepare reviewed secrets/configuration and run the
+# privileged migrate + role bootstrap before starting API/coordinator. All host
+# publications inherited from the development base remain loopback-only.
 services:
   postgres:
     cpus: 1
     mem_limit: 512m
     environment:
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set a random hex database password}
+      POSTGRES_PASSWORD: ""
+      POSTGRES_PASSWORD_FILE: /run/forgeq/postgres-password
+    command: ["postgres", "-c", "ssl=on", "-c", "ssl_cert_file=/run/forgeq/server.crt", "-c", "ssl_key_file=/run/forgeq/server.key", "-c", "hba_file=/run/forgeq/pg_hba.conf"]
+    volumes:
+      - ${FORGEQ_POSTGRES_SECRETS_DIR:?set PostgreSQL secret directory}:/run/forgeq:ro
     restart: unless-stopped
     stop_grace_period: 30s
   redis:
     cpus: 0.5
     mem_limit: 192m
-    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "128mb", "--maxmemory-policy", "noeviction"]
+    command: ["redis-server", "/run/forgeq/redis.conf"]
+    volumes:
+      - ${FORGEQ_REDIS_SECRETS_DIR:?set Redis secret/config directory}:/run/forgeq:ro
+    healthcheck:
+      disable: true
     restart: unless-stopped
   api:
     cpus: 0.5
@@ -19,43 +28,117 @@ services:
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
+    volumes:
+      - ${FORGEQ_API_SECRETS_DIR:?set API-only secrets directory}:/run/forgeq:ro
     environment:
-      CONTROL_PLANE_TOKEN: ${CONTROL_PLANE_TOKEN:?set a random service credential}
-      DATABASE_URL: postgres://forgequeue:${POSTGRES_PASSWORD:?set database password}@postgres:5432/forgequeue?sslmode=disable
+      APP_ENV: production
+      CONTROL_PLANE_TOKEN: ""
+      DATABASE_URL: ""
+      DATABASE_URL_FILE: /run/forgeq/database-url
+      HTTP_TLS_MODE: tls
+      HTTP_TLS_CERT_FILE: /run/forgeq/http.crt
+      HTTP_TLS_KEY_FILE: /run/forgeq/http.key
+      GRPC_AUTH_MODE: mtls
+      SERVICE_TLS_CA_FILE: /run/forgeq/service-ca.crt
+      SERVICE_TLS_CERT_FILE: /run/forgeq/service.crt
+      SERVICE_TLS_KEY_FILE: /run/forgeq/service.key
+      COORDINATOR_TLS_SERVER_NAME: coordinator
+      REDIS_ADDR: redis:6379
+      REDIS_USERNAME: ${REDIS_USERNAME:-default}
+      REDIS_PASSWORD_FILE: /run/forgeq/redis-password
+      REDIS_TLS_ENABLED: "true"
+      REDIS_TLS_CA_FILE: /run/forgeq/redis-ca.crt
+      REDIS_TLS_SERVER_NAME: redis
       RETENTION_ENABLED: ${RETENTION_ENABLED:-false}
       RETENTION_JOB_AGE: ${RETENTION_JOB_AGE:-720h}
       RETENTION_EVENT_AGE: ${RETENTION_EVENT_AGE:-168h}
       RETENTION_BATCH: ${RETENTION_BATCH:-100}
+    depends_on:
+      redis:
+        condition: service_started
+    healthcheck:
+      disable: true
   coordinator:
     cpus: 0.5
     mem_limit: 256m
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
+    volumes:
+      - ${FORGEQ_COORDINATOR_SECRETS_DIR:?set coordinator-only secrets directory}:/run/forgeq:ro
     environment:
-      CONTROL_PLANE_TOKEN: ${CONTROL_PLANE_TOKEN:?set a random service credential}
-      DATABASE_URL: postgres://forgequeue:${POSTGRES_PASSWORD:?set database password}@postgres:5432/forgequeue?sslmode=disable
+      APP_ENV: production
+      CONTROL_PLANE_TOKEN: ""
+      DATABASE_URL: ""
+      DATABASE_URL_FILE: /run/forgeq/database-url
+      GRPC_AUTH_MODE: mtls
+      SERVICE_TLS_CA_FILE: /run/forgeq/service-ca.crt
+      SERVICE_TLS_CERT_FILE: /run/forgeq/service.crt
+      SERVICE_TLS_KEY_FILE: /run/forgeq/service.key
+      METRICS_TLS_CERT_FILE: /run/forgeq/metrics.crt
+      METRICS_TLS_KEY_FILE: /run/forgeq/metrics.key
+      METRICS_AUTH_TOKEN_FILE: /run/forgeq/metrics-token
+      REDIS_ADDR: redis:6379
+      REDIS_USERNAME: ${REDIS_USERNAME:-default}
+      REDIS_PASSWORD_FILE: /run/forgeq/redis-password
+      REDIS_TLS_ENABLED: "true"
+      REDIS_TLS_CA_FILE: /run/forgeq/redis-ca.crt
+      REDIS_TLS_SERVER_NAME: redis
+    depends_on:
+      api:
+        condition: service_started
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:9101/healthz"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
+      disable: true
   worker:
     cpus: 0.5
     mem_limit: 256m
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
+    volumes:
+      - ${FORGEQ_WORKER_SECRETS_DIR:?set worker-only secrets directory}:/run/forgeq:ro
     environment:
-      CONTROL_PLANE_TOKEN: ${CONTROL_PLANE_TOKEN:?set a random service credential}
+      APP_ENV: production
+      CONTROL_PLANE_TOKEN: ""
+      GRPC_AUTH_MODE: mtls
+      SERVICE_TLS_CA_FILE: /run/forgeq/service-ca.crt
+      SERVICE_TLS_CERT_FILE: /run/forgeq/service.crt
+      SERVICE_TLS_KEY_FILE: /run/forgeq/service.key
+      COORDINATOR_TLS_SERVER_NAME: coordinator
+      WORKER_ID: ${WORKER_ID:?must match worker certificate URI identity}
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+  migrate:
+    image: forgequeue/migrate:${FORGEQUEUE_VERSION:-dev}
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        SERVICE: migrate
+    profiles: [admin]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      APP_ENV: production
+      DATABASE_URL_FILE: /run/forgeq/database-url
+      EVENTS_ENABLED: ${EVENTS_ENABLED:-false}
+    volumes:
+      - ${FORGEQ_MIGRATION_SECRETS_DIR:?set separate migration-only secrets directory}:/run/forgeq:ro
   prometheus:
     cpus: 0.5
     mem_limit: 384m
+    volumes:
+      - ./security/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ${FORGEQ_MONITOR_SECRETS_DIR:?set monitoring-only secrets directory}:/run/forgeq:ro
+    depends_on:
+      api:
+        condition: service_started
   grafana:
     cpus: 0.5
     mem_limit: 256m
     environment:
       GF_AUTH_ANONYMOUS_ENABLED: "false"
       GF_AUTH_DISABLE_LOGIN_FORM: "false"
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set a unique Grafana admin password}
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/forgeq/grafana-password
+    volumes:
+      - ${FORGEQ_GRAFANA_SECRETS_DIR:?set Grafana-only secrets directory}:/run/forgeq:ro

@@ -69,6 +69,7 @@ func run() error {
 	}
 	defer db.Close()
 	redisClient, err := platform.OpenRedisWithSettings(ctx, cfg.RedisAddr, platform.RedisSettings{
+		Username: cfg.RedisUsername, Password: cfg.RedisPassword, TLSConfig: cfg.RedisTLS,
 		PoolSize: cfg.RedisPoolSize, DialTimeout: cfg.RedisTimeout, IOTimeout: cfg.RedisTimeout, PingTimeout: cfg.RedisTimeout,
 	})
 	if err != nil {

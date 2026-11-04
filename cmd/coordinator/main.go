@@ -47,6 +47,9 @@ func run() error {
 		return fmt.Errorf("initialize logger: %w", err)
 	}
 	metrics := telemetry.NewMetrics()
+	if cfg.MetricsTLS != nil {
+		metrics.TLSCertificateNotAfter.WithLabelValues("metrics", "server").Set(float64(cfg.MetricsTLS.Certificates[0].Leaf.NotAfter.Unix()))
+	}
 	if cfg.ServiceTLS != nil {
 		metrics.TLSCertificateNotAfter.WithLabelValues("grpc", "server").Set(float64(cfg.ServiceTLS.Certificates[0].Leaf.NotAfter.Unix()))
 	}
@@ -62,6 +65,7 @@ func run() error {
 	}
 	defer db.Close()
 	redisClient, err := platform.OpenRedisWithSettings(ctx, cfg.RedisAddr, platform.RedisSettings{
+		Username: cfg.RedisUsername, Password: cfg.RedisPassword, TLSConfig: cfg.RedisTLS,
 		PoolSize: cfg.RedisPoolSize, DialTimeout: cfg.RedisTimeout, IOTimeout: cfg.RedisTimeout, PingTimeout: cfg.RedisTimeout,
 	})
 	if err != nil {
@@ -126,7 +130,7 @@ func run() error {
 	go observeCoordinatorState(ctx, jobQueue, coordinatorServer, metrics, logger)
 	metricsErrors := make(chan error, 1)
 	go func() {
-		metricsErrors <- telemetry.ServeMetrics(ctx, fmt.Sprintf(":%d", cfg.MetricsPort), metrics, logger)
+		metricsErrors <- security.ServeMetrics(ctx, net.JoinHostPort(cfg.MetricsBindHost, strconv.Itoa(cfg.MetricsPort)), cfg.MetricsTLS, cfg.MetricsAuthToken, metrics.Handler())
 	}()
 
 	serverOptions := []grpc.ServerOption{}

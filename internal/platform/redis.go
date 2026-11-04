@@ -2,6 +2,7 @@ package platform
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"time"
 
@@ -18,6 +19,9 @@ func OpenRedis(ctx context.Context, address string) (*redis.Client, error) {
 }
 
 type RedisSettings struct {
+	Username    string
+	Password    string
+	TLSConfig   *tls.Config
 	PoolSize    int
 	DialTimeout time.Duration
 	IOTimeout   time.Duration
@@ -29,7 +33,8 @@ func OpenRedisWithSettings(ctx context.Context, address string, settings RedisSe
 		return nil, fmt.Errorf("Redis pool size and timeouts must be positive")
 	}
 	client := redis.NewClient(&redis.Options{
-		Addr:            address,
+		Addr:     address,
+		Username: settings.Username, Password: settings.Password, TLSConfig: settings.TLSConfig,
 		PoolSize:        settings.PoolSize,
 		DialTimeout:     settings.DialTimeout,
 		ReadTimeout:     settings.IOTimeout,
@@ -42,7 +47,7 @@ func OpenRedisWithSettings(ctx context.Context, address string, settings RedisSe
 	defer cancel()
 	if err := client.Ping(pingCtx).Err(); err != nil {
 		client.Close()
-		return nil, fmt.Errorf("ping Redis: %w", err)
+		return nil, fmt.Errorf("ping Redis: connection failed")
 	}
 	return client, nil
 }

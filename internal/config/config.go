@@ -28,14 +28,20 @@ type Config struct {
 	Service string
 	Env     string
 
-	GRPCBindHost string
-	GRPCAuthMode string
-	ServiceTLS   *tls.Config
-	HTTPBindHost string
-	HTTPSTLS     *tls.Config
-	HTTPPort     int
-	GRPCPort     int
-	MetricsPort  int
+	RedisUsername    string
+	RedisPassword    string
+	RedisTLS         *tls.Config
+	MetricsBindHost  string
+	MetricsTLS       *tls.Config
+	MetricsAuthToken string
+	GRPCBindHost     string
+	GRPCAuthMode     string
+	ServiceTLS       *tls.Config
+	HTTPBindHost     string
+	HTTPSTLS         *tls.Config
+	HTTPPort         int
+	GRPCPort         int
+	MetricsPort      int
 
 	DatabaseURL     string
 	RedisAddr       string
@@ -319,6 +325,9 @@ func load(service string, lookup lookupFunc) (Config, error) {
 	}
 
 	cfg.GRPCBindHost, _ = lookup("GRPC_BIND_HOST")
+	if cfg.GRPCBindHost != "" && net.ParseIP(cfg.GRPCBindHost) == nil && cfg.GRPCBindHost != "localhost" {
+		return Config{}, errors.New("GRPC_BIND_HOST must be an IP address or localhost")
+	}
 	cfg.GRPCAuthMode, _ = lookup("GRPC_AUTH_MODE")
 	if cfg.GRPCAuthMode == "" {
 		cfg.GRPCAuthMode = "token"
@@ -362,6 +371,10 @@ func load(service string, lookup lookupFunc) (Config, error) {
 		if err := security.ValidateDatabaseURL(cfg.DatabaseURL); err != nil {
 			return Config{}, err
 		}
+	}
+
+	if err := loadSecureDependencies(&cfg, lookup); err != nil {
+		return Config{}, err
 	}
 
 	return cfg, nil
