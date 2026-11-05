@@ -113,9 +113,11 @@ func TestExternalInvoiceAppRecoversLostCompletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	var lost atomic.Bool
+	completionAttempt := make(chan struct{}, 1)
 	interceptor := func(ctx context.Context, req any, info *grpc.UnaryServerInfo, next grpc.UnaryHandler) (any, error) {
 		return auth.Intercept(ctx, req, info, func(ctx context.Context, req any) (any, error) {
 			if strings.HasSuffix(info.FullMethod, "/CompleteJob") && lost.CompareAndSwap(false, true) {
+				completionAttempt <- struct{}{}
 				return nil, status.Error(codes.Unavailable, "simulated lost completion")
 			}
 			return next(ctx, req)
@@ -144,14 +146,28 @@ func TestExternalInvoiceAppRecoversLostCompletion(t *testing.T) {
 	}
 	workerCtx, stopWorker := context.WithCancel(ctx)
 	defer stopWorker()
-	process := exec.CommandContext(workerCtx, binary, "worker")
-	process.Env = append(os.Environ(), "INVOICE_DATABASE_URL="+dsn, "FORGEQ_COORDINATOR_ADDR="+listener.Addr().String(), "FORGEQ_DEV_TOKEN="+token, "FORGEQ_ALLOW_INSECURE=true", "FORGEQ_WORKER_ID=mvp-invoice-worker")
-	process.Stdout = io.Discard
-	process.Stderr = io.Discard
-	if err = process.Start(); err != nil {
-		t.Fatal(err)
+	startWorker := func(id string) *exec.Cmd {
+		process := exec.CommandContext(workerCtx, binary, "worker")
+		process.Env = append(os.Environ(), "INVOICE_DATABASE_URL="+dsn, "FORGEQ_COORDINATOR_ADDR="+listener.Addr().String(), "FORGEQ_DEV_TOKEN="+token, "FORGEQ_ALLOW_INSECURE=true", "FORGEQ_WORKER_ID="+id)
+		process.Stdout = io.Discard
+		process.Stderr = io.Discard
+		if err := process.Start(); err != nil {
+			t.Fatal(err)
+		}
+		return process
 	}
+	process := startWorker("mvp-invoice-worker-1")
 	defer func() { stopWorker(); _ = process.Wait() }()
+	select {
+	case <-completionAttempt:
+		if err := process.Process.Kill(); err != nil {
+			t.Fatal(err)
+		}
+		_ = process.Wait()
+		process = startWorker("mvp-invoice-worker-2")
+	case <-time.After(10 * time.Second):
+		t.Fatal("first worker did not execute the invoice")
+	}
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		job, err = producer.Get(ctx, job.ID)
