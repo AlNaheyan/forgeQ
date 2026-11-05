@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"forgequeue/proto/workerpb"
+	"github.com/AlNaheyan/forgeQ/proto/workerpb"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"

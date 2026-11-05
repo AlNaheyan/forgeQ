@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"forgequeue/internal/jobs"
+	"github.com/AlNaheyan/forgeQ/internal/jobs"
 )
 
 func TestSchedulersRejectWhenNoWorkerIsEligible(t *testing.T) {

@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"time"
 
-	"forgequeue/internal/jobs"
-	"forgequeue/internal/queue"
-	"forgequeue/proto/workerpb"
+	"github.com/AlNaheyan/forgeQ/internal/jobs"
+	"github.com/AlNaheyan/forgeQ/internal/queue"
+	"github.com/AlNaheyan/forgeQ/proto/workerpb"
 )
 
 type GRPCBroker struct {

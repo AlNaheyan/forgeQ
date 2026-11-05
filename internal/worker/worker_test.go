@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"forgequeue/internal/jobs"
-	"forgequeue/internal/queue"
+	"github.com/AlNaheyan/forgeQ/internal/jobs"
+	"github.com/AlNaheyan/forgeQ/internal/queue"
 )
 
 type finiteQueue struct {

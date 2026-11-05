@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	"forgequeue/internal/telemetry"
+	"github.com/AlNaheyan/forgeQ/internal/telemetry"
 )
 
 type Config struct {

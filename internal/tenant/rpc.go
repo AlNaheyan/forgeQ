@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"fmt"
-	"forgequeue/internal/security"
+	"github.com/AlNaheyan/forgeQ/internal/security"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"

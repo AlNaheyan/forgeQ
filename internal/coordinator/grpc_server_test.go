@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"forgequeue/internal/eventstream"
-	"forgequeue/internal/jobs"
-	"forgequeue/internal/queue"
-	"forgequeue/proto/workerpb"
+	"github.com/AlNaheyan/forgeQ/internal/eventstream"
+	"github.com/AlNaheyan/forgeQ/internal/jobs"
+	"github.com/AlNaheyan/forgeQ/internal/queue"
+	"github.com/AlNaheyan/forgeQ/proto/workerpb"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

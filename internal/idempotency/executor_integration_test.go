@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"forgequeue/internal/platform"
-	"forgequeue/migrations"
+	"github.com/AlNaheyan/forgeQ/internal/platform"
+	"github.com/AlNaheyan/forgeQ/migrations"
 )
 
 func TestExecutorPostgresSemantics(t *testing.T) {

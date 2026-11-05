@@ -10,7 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"forgequeue/internal/eventstream"
+	"github.com/AlNaheyan/forgeQ/internal/eventstream"
 )
 
 var ErrEventLeaseLost = errors.New("event outbox lease lost")

@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"time"
 
-	"forgequeue/internal/jobs"
-	"forgequeue/internal/tenant"
+	"github.com/AlNaheyan/forgeQ/internal/jobs"
+	"github.com/AlNaheyan/forgeQ/internal/tenant"
 )
 
 // StartAttempt atomically starts a leased job and records the corresponding

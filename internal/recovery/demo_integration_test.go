@@ -1,7 +1,7 @@
 package recovery_test
 
 import (
-	"forgequeue/internal/tenant"
+	"github.com/AlNaheyan/forgeQ/internal/tenant"
 	"net/http"
 	"os"
 	"os/exec"

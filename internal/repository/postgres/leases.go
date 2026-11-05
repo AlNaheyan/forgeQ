@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	"forgequeue/internal/jobs"
-	"forgequeue/internal/tenant"
+	"github.com/AlNaheyan/forgeQ/internal/jobs"
+	"github.com/AlNaheyan/forgeQ/internal/tenant"
 )
 
 // LeaseJob atomically assigns an eligible queued job to workerID. The state

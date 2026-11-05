@@ -2,9 +2,9 @@ package coordinator
 
 import (
 	"context"
-	"forgequeue/internal/jobs"
-	"forgequeue/internal/tenant"
-	"forgequeue/proto/workerpb"
+	"github.com/AlNaheyan/forgeQ/internal/jobs"
+	"github.com/AlNaheyan/forgeQ/internal/tenant"
+	"github.com/AlNaheyan/forgeQ/proto/workerpb"
 	"testing"
 	"time"
 )

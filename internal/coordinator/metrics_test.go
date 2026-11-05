@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"forgequeue/internal/jobs"
-	"forgequeue/internal/telemetry"
-	"forgequeue/proto/workerpb"
+	"github.com/AlNaheyan/forgeQ/internal/jobs"
+	"github.com/AlNaheyan/forgeQ/internal/telemetry"
+	"github.com/AlNaheyan/forgeQ/proto/workerpb"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"

@@ -1418,7 +1418,7 @@ const file_proto_worker_proto_rawDesc = "" +
 	"\aFailJob\x12$.forgequeue.worker.v1.FailJobRequest\x1a%.forgequeue.worker.v1.FailJobResponse\x12_\n" +
 	"\n" +
 	"RenewLease\x12'.forgequeue.worker.v1.RenewLeaseRequest\x1a(.forgequeue.worker.v1.RenewLeaseResponse\x12b\n" +
-	"\vListWorkers\x12(.forgequeue.worker.v1.ListWorkersRequest\x1a).forgequeue.worker.v1.ListWorkersResponseB$Z\"forgequeue/proto/workerpb;workerpbb\x06proto3"
+	"\vListWorkers\x12(.forgequeue.worker.v1.ListWorkersRequest\x1a).forgequeue.worker.v1.ListWorkersResponseB5Z3github.com/AlNaheyan/forgeQ/proto/workerpb;workerpbb\x06proto3"
 
 var (
 	file_proto_worker_proto_rawDescOnce sync.Once

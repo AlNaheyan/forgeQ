@@ -9,10 +9,10 @@ import (
 	"os"
 	"time"
 
-	"forgequeue/internal/platform"
-	"forgequeue/internal/security"
-	"forgequeue/internal/tenant"
-	"forgequeue/migrations"
+	"github.com/AlNaheyan/forgeQ/internal/platform"
+	"github.com/AlNaheyan/forgeQ/internal/security"
+	"github.com/AlNaheyan/forgeQ/internal/tenant"
+	"github.com/AlNaheyan/forgeQ/migrations"
 )
 
 func main() {

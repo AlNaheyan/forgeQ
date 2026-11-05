@@ -17,9 +17,9 @@ import (
 	"testing"
 	"time"
 
-	"forgequeue/internal/jobs"
-	"forgequeue/internal/tenant"
-	"forgequeue/proto/workerpb"
+	"github.com/AlNaheyan/forgeQ/internal/jobs"
+	"github.com/AlNaheyan/forgeQ/internal/tenant"
+	"github.com/AlNaheyan/forgeQ/proto/workerpb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"

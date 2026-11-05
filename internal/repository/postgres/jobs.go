@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"forgequeue/internal/jobs"
-	"forgequeue/internal/repository"
-	"forgequeue/internal/tenant"
+	"github.com/AlNaheyan/forgeQ/internal/jobs"
+	"github.com/AlNaheyan/forgeQ/internal/repository"
+	"github.com/AlNaheyan/forgeQ/internal/tenant"
 )
 
 const jobColumns = `

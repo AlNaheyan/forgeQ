@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"forgequeue/internal/jobs"
+	"github.com/AlNaheyan/forgeQ/internal/jobs"
 )
 
 type retryRepository struct {

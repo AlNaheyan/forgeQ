@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"forgequeue/internal/jobs"
-	pg "forgequeue/internal/repository/postgres"
-	"forgequeue/internal/security"
-	"forgequeue/internal/tenant"
-	"forgequeue/migrations"
+	"github.com/AlNaheyan/forgeQ/internal/jobs"
+	pg "github.com/AlNaheyan/forgeQ/internal/repository/postgres"
+	"github.com/AlNaheyan/forgeQ/internal/security"
+	"github.com/AlNaheyan/forgeQ/internal/tenant"
+	"github.com/AlNaheyan/forgeQ/migrations"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 

@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"forgequeue/internal/jobs"
+	"github.com/AlNaheyan/forgeQ/internal/jobs"
 )
 
 const defaultRetryPromotionBatchSize = 100

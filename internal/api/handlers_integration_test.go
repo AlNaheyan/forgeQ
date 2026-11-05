@@ -13,13 +13,13 @@ import (
 	"testing"
 	"time"
 
-	"forgequeue/internal/api"
-	"forgequeue/internal/jobs"
-	"forgequeue/internal/platform"
-	jobqueue "forgequeue/internal/queue"
-	postgresrepository "forgequeue/internal/repository/postgres"
-	"forgequeue/internal/tenant"
-	"forgequeue/migrations"
+	"github.com/AlNaheyan/forgeQ/internal/api"
+	"github.com/AlNaheyan/forgeQ/internal/jobs"
+	"github.com/AlNaheyan/forgeQ/internal/platform"
+	jobqueue "github.com/AlNaheyan/forgeQ/internal/queue"
+	postgresrepository "github.com/AlNaheyan/forgeQ/internal/repository/postgres"
+	"github.com/AlNaheyan/forgeQ/internal/tenant"
+	"github.com/AlNaheyan/forgeQ/migrations"
 
 	"github.com/redis/go-redis/v9"
 )

@@ -2,9 +2,9 @@ package api
 
 import (
 	"context"
-	"forgequeue/internal/jobs"
-	"forgequeue/internal/telemetry"
-	"forgequeue/internal/tenant"
+	"github.com/AlNaheyan/forgeQ/internal/jobs"
+	"github.com/AlNaheyan/forgeQ/internal/telemetry"
+	"github.com/AlNaheyan/forgeQ/internal/tenant"
 	"io"
 	"log/slog"
 	"net/http"

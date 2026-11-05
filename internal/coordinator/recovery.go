@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"time"
 
-	"forgequeue/internal/jobs"
-	"forgequeue/internal/telemetry"
+	"github.com/AlNaheyan/forgeQ/internal/jobs"
+	"github.com/AlNaheyan/forgeQ/internal/telemetry"
 )
 
 const defaultRecoveryBatchSize = 100

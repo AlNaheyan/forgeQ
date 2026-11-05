@@ -1,7 +1,7 @@
 package telemetry
 
 import (
-	"forgequeue/internal/backup"
+	"github.com/AlNaheyan/forgeQ/internal/backup"
 	"net/http"
 	"strconv"
 	"time"

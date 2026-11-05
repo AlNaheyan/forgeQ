@@ -10,8 +10,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"forgequeue/internal/config"
-	"forgequeue/internal/telemetry"
+	"github.com/AlNaheyan/forgeQ/internal/config"
+	"github.com/AlNaheyan/forgeQ/internal/telemetry"
 )
 
 // Run loads configuration, initializes logging, and waits for shutdown.

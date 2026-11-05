@@ -4,9 +4,9 @@ package main
 import (
 	"context"
 	"fmt"
-	"forgequeue/internal/platform"
-	"forgequeue/internal/security"
-	"forgequeue/migrations"
+	"github.com/AlNaheyan/forgeQ/internal/platform"
+	"github.com/AlNaheyan/forgeQ/internal/security"
+	"github.com/AlNaheyan/forgeQ/migrations"
 	"os"
 	"strconv"
 	"time"

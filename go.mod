@@ -1,4 +1,4 @@
-module forgequeue
+module github.com/AlNaheyan/forgeQ
 
 go 1.26.10
 

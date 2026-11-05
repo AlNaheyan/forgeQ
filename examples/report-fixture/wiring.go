@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"errors"
 
-	"forgequeue/internal/jobtypes"
-	"forgequeue/internal/worker"
+	"github.com/AlNaheyan/forgeQ/internal/jobtypes"
+	"github.com/AlNaheyan/forgeQ/internal/worker"
 )
 
 // Registrations returns the same descriptor set and executable handlers that

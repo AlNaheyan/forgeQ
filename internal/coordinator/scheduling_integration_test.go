@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"forgequeue/internal/jobs"
-	"forgequeue/proto/workerpb"
+	"github.com/AlNaheyan/forgeQ/internal/jobs"
+	"github.com/AlNaheyan/forgeQ/proto/workerpb"
 )
 
 func TestClaimJobRoutesByCapabilityAndKeepsStickyOffer(t *testing.T) {

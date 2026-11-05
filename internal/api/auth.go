@@ -3,7 +3,7 @@ package api
 import (
 	"context"
 	"errors"
-	"forgequeue/internal/tenant"
+	"github.com/AlNaheyan/forgeQ/internal/tenant"
 	"net/http"
 	"strings"
 )

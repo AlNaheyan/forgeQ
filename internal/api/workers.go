@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"forgequeue/proto/workerpb"
+	"github.com/AlNaheyan/forgeQ/proto/workerpb"
 )
 
 type WorkerInfo struct {

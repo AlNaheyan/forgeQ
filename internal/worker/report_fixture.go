@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	"forgequeue/internal/jobtypes"
+	"github.com/AlNaheyan/forgeQ/internal/jobtypes"
 )
 
 // ReportFixture is a synthetic aggregation example; it does not fetch URLs or

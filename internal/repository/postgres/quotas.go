@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 
-	"forgequeue/internal/tenant"
+	"github.com/AlNaheyan/forgeQ/internal/tenant"
 )
 
 // All admissions and lease acquisitions serialize on this row across replicas.

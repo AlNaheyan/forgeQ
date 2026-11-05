@@ -11,13 +11,13 @@ import (
 	"testing"
 	"time"
 
-	"forgequeue/internal/coordinator"
-	"forgequeue/internal/idempotency"
-	"forgequeue/internal/jobs"
-	"forgequeue/internal/platform"
-	"forgequeue/internal/queue"
-	"forgequeue/internal/repository/postgres"
-	"forgequeue/migrations"
+	"github.com/AlNaheyan/forgeQ/internal/coordinator"
+	"github.com/AlNaheyan/forgeQ/internal/idempotency"
+	"github.com/AlNaheyan/forgeQ/internal/jobs"
+	"github.com/AlNaheyan/forgeQ/internal/platform"
+	"github.com/AlNaheyan/forgeQ/internal/queue"
+	"github.com/AlNaheyan/forgeQ/internal/repository/postgres"
+	"github.com/AlNaheyan/forgeQ/migrations"
 	"github.com/redis/go-redis/v9"
 )
 

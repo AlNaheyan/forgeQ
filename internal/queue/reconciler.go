@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"forgequeue/internal/jobs"
+	"github.com/AlNaheyan/forgeQ/internal/jobs"
 )
 
 type queuedJobRepository interface {

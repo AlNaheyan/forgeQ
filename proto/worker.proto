@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package forgequeue.worker.v1;
 
-option go_package = "forgequeue/proto/workerpb;workerpb";
+option go_package = "github.com/AlNaheyan/forgeQ/proto/workerpb;workerpb";
 
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";

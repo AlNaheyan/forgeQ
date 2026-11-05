@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"forgequeue/internal/jobs"
+	"github.com/AlNaheyan/forgeQ/internal/jobs"
 )
 
 // ErrNoEligibleWorker indicates that no healthy worker has both capacity and

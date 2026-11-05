@@ -8,12 +8,12 @@ import (
 	"syscall"
 	"time"
 
-	"forgequeue/internal/config"
-	"forgequeue/internal/jobtypes"
-	"forgequeue/internal/telemetry"
-	"forgequeue/internal/tenant"
-	workerpkg "forgequeue/internal/worker"
-	"forgequeue/proto/workerpb"
+	"github.com/AlNaheyan/forgeQ/internal/config"
+	"github.com/AlNaheyan/forgeQ/internal/jobtypes"
+	"github.com/AlNaheyan/forgeQ/internal/telemetry"
+	"github.com/AlNaheyan/forgeQ/internal/tenant"
+	workerpkg "github.com/AlNaheyan/forgeQ/internal/worker"
+	"github.com/AlNaheyan/forgeQ/proto/workerpb"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"

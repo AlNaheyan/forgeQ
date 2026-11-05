@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"forgequeue/internal/jobtypes"
+	"github.com/AlNaheyan/forgeQ/internal/jobtypes"
 	"sync"
 	"time"
 )

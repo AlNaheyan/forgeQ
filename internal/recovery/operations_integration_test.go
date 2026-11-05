@@ -10,13 +10,13 @@ import (
 	"testing"
 	"time"
 
-	"forgequeue/internal/jobs"
-	"forgequeue/internal/operations"
-	"forgequeue/internal/platform"
-	"forgequeue/internal/repository/postgres"
-	"forgequeue/internal/telemetry"
-	"forgequeue/internal/tenant"
-	"forgequeue/migrations"
+	"github.com/AlNaheyan/forgeQ/internal/jobs"
+	"github.com/AlNaheyan/forgeQ/internal/operations"
+	"github.com/AlNaheyan/forgeQ/internal/platform"
+	"github.com/AlNaheyan/forgeQ/internal/repository/postgres"
+	"github.com/AlNaheyan/forgeQ/internal/telemetry"
+	"github.com/AlNaheyan/forgeQ/internal/tenant"
+	"github.com/AlNaheyan/forgeQ/migrations"
 )
 
 func TestRetentionBoundsAndPreservesWork(t *testing.T) {

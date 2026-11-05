@@ -6,7 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"forgequeue/internal/tenant"
+	"github.com/AlNaheyan/forgeQ/internal/tenant"
 	"strings"
 	"unicode/utf8"
 )

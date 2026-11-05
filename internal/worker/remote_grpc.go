@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"forgequeue/proto/workerpb"
+	"github.com/AlNaheyan/forgeQ/proto/workerpb"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

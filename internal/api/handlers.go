@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"forgequeue/internal/jobs"
-	"forgequeue/internal/telemetry"
-	"forgequeue/internal/tenant"
+	"github.com/AlNaheyan/forgeQ/internal/jobs"
+	"github.com/AlNaheyan/forgeQ/internal/telemetry"
+	"github.com/AlNaheyan/forgeQ/internal/tenant"
 )
 
 const maxRequestBody = 1 << 20

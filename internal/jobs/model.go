@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"forgequeue/internal/jobtypes"
+	"github.com/AlNaheyan/forgeQ/internal/jobtypes"
 	"strings"
 	"time"
 )

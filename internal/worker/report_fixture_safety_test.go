@@ -3,7 +3,7 @@ package worker
 import (
 	"context"
 	"encoding/json"
-	"forgequeue/internal/jobtypes"
+	"github.com/AlNaheyan/forgeQ/internal/jobtypes"
 	"strings"
 	"testing"
 )

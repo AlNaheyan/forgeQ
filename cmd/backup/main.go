@@ -7,7 +7,7 @@ import (
 	"errors"
 	"filippo.io/age"
 	"fmt"
-	"forgequeue/internal/backup"
+	"github.com/AlNaheyan/forgeQ/internal/backup"
 	"os"
 	"os/signal"
 	"strconv"

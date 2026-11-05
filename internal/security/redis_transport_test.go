@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"forgequeue/internal/platform"
+	"github.com/AlNaheyan/forgeQ/internal/platform"
 )
 
 // A local RESP fixture verifies that the real Redis constructor sends credentials

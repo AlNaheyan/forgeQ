@@ -2,7 +2,7 @@ package config
 
 import (
 	"errors"
-	"forgequeue/internal/security"
+	"github.com/AlNaheyan/forgeQ/internal/security"
 	"net"
 )
 

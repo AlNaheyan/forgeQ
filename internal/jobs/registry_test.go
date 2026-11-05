@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"forgequeue/internal/jobtypes"
+	"github.com/AlNaheyan/forgeQ/internal/jobtypes"
 )
 
 func TestSubmissionUsesSelectedRegistry(t *testing.T) {

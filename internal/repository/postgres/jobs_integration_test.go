@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"forgequeue/internal/jobs"
-	"forgequeue/internal/platform"
-	postgresrepository "forgequeue/internal/repository/postgres"
-	"forgequeue/migrations"
+	"github.com/AlNaheyan/forgeQ/internal/jobs"
+	"github.com/AlNaheyan/forgeQ/internal/platform"
+	postgresrepository "github.com/AlNaheyan/forgeQ/internal/repository/postgres"
+	"github.com/AlNaheyan/forgeQ/migrations"
 )
 
 func TestJobRepositoryLifecycleAndIdempotency(t *testing.T) {

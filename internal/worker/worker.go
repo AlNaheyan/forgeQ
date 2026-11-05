@@ -15,10 +15,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"forgequeue/internal/jobs"
-	"forgequeue/internal/jobtypes"
-	"forgequeue/internal/queue"
-	"forgequeue/internal/tenant"
+	"github.com/AlNaheyan/forgeQ/internal/jobs"
+	"github.com/AlNaheyan/forgeQ/internal/jobtypes"
+	"github.com/AlNaheyan/forgeQ/internal/queue"
+	"github.com/AlNaheyan/forgeQ/internal/tenant"
 )
 
 type jobRepository interface {
