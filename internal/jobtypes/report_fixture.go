@@ -15,6 +15,9 @@ type ReportFixturePayload struct {
 
 func DecodeReportFixture(data json.RawMessage) (ReportFixturePayload, error) {
 	var p ReportFixturePayload
+	if len(data) == 0 || len(data) > 64<<10 {
+		return p, errors.New("invalid report fixture payload size")
+	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&p); err != nil {
