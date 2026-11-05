@@ -86,6 +86,7 @@ type Config struct {
 	WorkerMaxResultBytes int
 	WorkerID             string
 	WorkerJobTypes       []string
+	ApplicationJobTypes  []string
 	WorkerPollInterval   time.Duration
 	SchedulerStrategy    string
 
@@ -290,6 +291,12 @@ func load(service string, lookup lookupFunc) (Config, error) {
 	cfg.WorkerJobTypes, err = csvValue("WORKER_JOB_TYPES", workerJobTypes)
 	if err != nil {
 		return Config{}, err
+	}
+	if raw, ok := lookup("FORGEQ_JOB_TYPES"); ok && strings.TrimSpace(raw) != "" {
+		cfg.ApplicationJobTypes, err = csvValue("FORGEQ_JOB_TYPES", raw)
+		if err != nil {
+			return Config{}, err
+		}
 	}
 	if cfg.WorkerPollInterval, err = durationValue(lookup, "WORKER_POLL_INTERVAL", 250*time.Millisecond); err != nil {
 		return Config{}, err

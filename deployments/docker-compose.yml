@@ -37,6 +37,7 @@ services:
         SERVICE: api
     environment:
       APP_ENV: development
+      FORGEQ_JOB_TYPES: ${FORGEQ_JOB_TYPES:-}
       HTTP_PORT: 8080
       CONTROL_PLANE_TOKEN: ${CONTROL_PLANE_TOKEN:-}
       DATABASE_URL: postgres://forgequeue:forgequeue@postgres:5432/forgequeue?sslmode=disable

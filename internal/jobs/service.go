@@ -81,6 +81,9 @@ func (s *Service) WithJobTypes(registry *jobtypes.Registry) *Service {
 	return s
 }
 
+func (s *Service) JobTypes() []jobtypes.Descriptor { return s.registry.Descriptors() }
+func (s *Service) SupportsType(name string) bool   { _, ok := s.registry.Lookup(name); return ok }
+
 // WithBackpressure enables ready-queue admission control. Submit accounts for
 // in-flight admissions in this service instance so concurrent bursts cannot
 // all pass the same stale depth observation. This is a soft per-process bound;

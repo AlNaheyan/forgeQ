@@ -46,7 +46,7 @@ func (s *authenticatedTestServer) Routes() http.Handler {
 }
 
 func TestProtectedRoutesRequireCredentials(t *testing.T) {
-	for _, path := range []string{"/v1/jobs", "/v1/jobs/id", "/v1/jobs/id/cancel", "/v1/jobs/id/retry", "/v1/workers", "/metrics"} {
+	for _, path := range []string{"/v1/jobs", "/v1/job-types", "/v1/jobs/id", "/v1/jobs/id/cancel", "/v1/jobs/id/retry", "/v1/workers", "/metrics"} {
 		method := "GET"
 		if path == "/v1/jobs/id/cancel" || path == "/v1/jobs/id/retry" {
 			method = "POST"

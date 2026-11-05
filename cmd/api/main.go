@@ -16,6 +16,7 @@ import (
 	"github.com/AlNaheyan/forgeQ/internal/config"
 	"github.com/AlNaheyan/forgeQ/internal/eventstream"
 	"github.com/AlNaheyan/forgeQ/internal/jobs"
+	"github.com/AlNaheyan/forgeQ/internal/jobtypes"
 	"github.com/AlNaheyan/forgeQ/internal/operations"
 	"github.com/AlNaheyan/forgeQ/internal/platform"
 	"github.com/AlNaheyan/forgeQ/internal/queue"
@@ -148,8 +149,12 @@ func run() error {
 	go func() { defer close(maintenanceDone); maintenance.Run(ctx) }()
 	defer func() { stop(); <-maintenanceDone }()
 	jobQueue := queue.NewRedisQueue(redisClient, "forgequeue")
+	jobRegistry, err := jobtypes.ApplicationRegistry(cfg.ApplicationJobTypes)
+	if err != nil {
+		return fmt.Errorf("configure application job types: %w", err)
+	}
 	service := jobs.NewService(repository, jobQueue, cfg.DefaultMaxAttempts).
-		WithBackpressure(jobQueue, cfg.MaxQueueDepth, metrics)
+		WithBackpressure(jobQueue, cfg.MaxQueueDepth, metrics).WithJobTypes(jobRegistry)
 	reconciler := queue.NewReconciler(repository, jobQueue, logger)
 	go reconciler.Run(ctx, cfg.QueueReconcileInterval)
 	handler := api.NewServer(service, func(r *http.Request) error {

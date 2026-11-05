@@ -124,3 +124,14 @@ var fixtures = func() *Registry {
 
 // Fixtures is the shared registry of built-in development job types.
 func Fixtures() *Registry { return fixtures }
+
+// ApplicationRegistry adds administrator-configured application task names.
+// The API validates the JSON envelope; application-specific validation runs in
+// the registered worker before invoking its handler.
+func ApplicationRegistry(names []string) (*Registry, error) {
+	descriptors := Fixtures().Descriptors()
+	for _, name := range names {
+		descriptors = append(descriptors, Descriptor{Name: name, MaxPayloadBytes: MaxPayloadBytes, Validate: fixtureObject})
+	}
+	return NewRegistry(descriptors)
+}

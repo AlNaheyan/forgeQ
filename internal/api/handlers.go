@@ -54,6 +54,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /dashboard", s.dashboard)
 	mux.HandleFunc("POST /v1/jobs", s.protect(s.createJob, false))
 	mux.HandleFunc("GET /v1/jobs", s.protect(s.listJobs, false))
+	mux.HandleFunc("GET /v1/job-types", s.protect(s.listJobTypes, false))
 	mux.HandleFunc("GET /v1/jobs/{id}", s.protect(s.getJob, false))
 	mux.HandleFunc("POST /v1/jobs/{id}/cancel", s.protect(s.cancelJob, false))
 	mux.HandleFunc("POST /v1/jobs/{id}/retry", s.protect(s.retryJob, false))
@@ -146,7 +147,7 @@ func (s *Server) listJobs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "unknown status filter")
 		return
 	}
-	if filter.Type != "" && !jobs.SupportedType(filter.Type) {
+	if filter.Type != "" && !s.jobs.SupportsType(filter.Type) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "unknown type filter")
 		return
 	}
