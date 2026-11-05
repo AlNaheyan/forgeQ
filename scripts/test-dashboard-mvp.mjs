@@ -40,5 +40,5 @@ try {
  console.log('Dashboard MVP passed: custom job, result, invalid payload and tenant access');
 } finally {
  socket?.close();chrome.kill();await new Promise(resolve=>chrome.exitCode!==null?resolve():chrome.once('exit',resolve));
- await rm(profile,{recursive:true,force:true});
+ await rm(profile,{recursive:true,force:true,maxRetries:10,retryDelay:200});
 }
