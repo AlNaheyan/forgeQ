@@ -59,9 +59,14 @@ type ListFilter struct {
 }
 
 func New(input CreateInput, now time.Time) (Job, error) {
+	return NewWithRegistry(input, now, jobtypes.Fixtures())
+}
+
+// NewWithRegistry validates against an immutable registry chosen at startup.
+func NewWithRegistry(input CreateInput, now time.Time, registry *jobtypes.Registry) (Job, error) {
 	input.Type = strings.TrimSpace(input.Type)
 	input.IdempotencyKey = strings.TrimSpace(input.IdempotencyKey)
-	if err := ValidateInput(input); err != nil {
+	if err := ValidateInputWithRegistry(input, registry); err != nil {
 		return Job{}, err
 	}
 
@@ -85,7 +90,11 @@ func New(input CreateInput, now time.Time) (Job, error) {
 }
 
 func ValidateInput(input CreateInput) error {
-	if !SupportedType(input.Type) {
+	return ValidateInputWithRegistry(input, jobtypes.Fixtures())
+}
+
+func ValidateInputWithRegistry(input CreateInput, registry *jobtypes.Registry) error {
+	if _, ok := registry.Lookup(input.Type); !ok {
 		return fmt.Errorf("%w: unsupported type %q", ErrInvalidJob, input.Type)
 	}
 	if len(input.Payload) == 0 || !json.Valid(input.Payload) {
@@ -98,7 +107,7 @@ func ValidateInput(input CreateInput) error {
 	if payloadObject == nil {
 		return fmt.Errorf("%w: payload must be a JSON object", ErrInvalidJob)
 	}
-	if err := jobtypes.Fixtures().Validate(input.Type, input.Payload); err != nil {
+	if err := registry.Validate(input.Type, input.Payload); err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidJob, err)
 	}
 	if input.MaxAttempts < 1 || input.MaxAttempts > 100 {

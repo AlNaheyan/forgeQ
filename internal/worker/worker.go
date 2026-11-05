@@ -40,6 +40,7 @@ type Config struct {
 	JobTypes           []string
 	RequireTenant      bool
 	MaxResultBytes     int
+	Registry           *jobtypes.Registry
 }
 
 type Worker struct {
@@ -97,6 +98,11 @@ func NewWithBroker(config Config, broker Broker, handlers map[string]Handler, lo
 	}
 	selectedHandlers := make(map[string]Handler, len(config.JobTypes))
 	for _, jobType := range config.JobTypes {
+		if config.Registry != nil {
+			if _, ok := config.Registry.Lookup(jobType); !ok {
+				return nil, fmt.Errorf("worker lacks descriptor for job type %q", jobType)
+			}
+		}
 		if _, exists := selectedHandlers[jobType]; exists {
 			return nil, fmt.Errorf("duplicate worker job type %q", jobType)
 		}
@@ -217,8 +223,12 @@ func (w *Worker) execute(ctx context.Context, job jobs.Job, handler Handler) {
 	}
 	var result any
 	var executionErr error
-	if _, known := jobtypes.Fixtures().Lookup(job.Type); known {
-		if err := jobtypes.Fixtures().Validate(job.Type, job.Payload); err != nil {
+	registry := w.config.Registry
+	if registry == nil {
+		registry = jobtypes.Fixtures()
+	}
+	if _, known := registry.Lookup(job.Type); known {
+		if err := registry.Validate(job.Type, job.Payload); err != nil {
 			executionErr = &HandlerError{Code: FailureInvalidPayload, Cause: err}
 		}
 	}

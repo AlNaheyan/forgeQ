@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"forgequeue/internal/jobtypes"
 	"sync"
 	"time"
 )
@@ -55,6 +56,7 @@ type Service struct {
 	queue              Enqueuer
 	defaultMaxAttempts int
 	now                func() time.Time
+	registry           *jobtypes.Registry
 
 	admissionMu          sync.Mutex
 	pendingAdmissions    int64
@@ -69,7 +71,14 @@ func NewService(repository Repository, queue Enqueuer, defaultMaxAttempts int) *
 		queue:              queue,
 		defaultMaxAttempts: defaultMaxAttempts,
 		now:                time.Now,
+		registry:           jobtypes.Fixtures(),
 	}
+}
+
+// WithJobTypes selects the immutable submission schema at startup.
+func (s *Service) WithJobTypes(registry *jobtypes.Registry) *Service {
+	s.registry = registry
+	return s
 }
 
 // WithBackpressure enables ready-queue admission control. Submit accounts for
@@ -87,7 +96,7 @@ func (s *Service) Submit(ctx context.Context, input CreateInput) (Submission, er
 	if input.MaxAttempts == 0 {
 		input.MaxAttempts = s.defaultMaxAttempts
 	}
-	job, err := New(input, s.now())
+	job, err := NewWithRegistry(input, s.now(), s.registry)
 	if err != nil {
 		return Submission{}, err
 	}

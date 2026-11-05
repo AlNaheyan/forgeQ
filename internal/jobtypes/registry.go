@@ -53,6 +53,19 @@ func (r *Registry) Names() []string {
 	return names
 }
 
+// Descriptors returns a copy that may be used to build a separate registry.
+func (r *Registry) Descriptors() []Descriptor {
+	if r == nil {
+		return nil
+	}
+	names := r.Names()
+	result := make([]Descriptor, 0, len(names))
+	for _, name := range names {
+		result = append(result, r.descriptors[name])
+	}
+	return result
+}
+
 func (r *Registry) Validate(name string, payload json.RawMessage) error {
 	d, ok := r.Lookup(name)
 	if !ok {
