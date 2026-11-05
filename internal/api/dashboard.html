@@ -194,8 +194,8 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Job</th><th>Type</th><th>Status</th><th>Attempt</th><th>Owner</th><th>Payload</th><th>Updated</th><th></th></tr></thead>
-          <tbody id="jobs"><tr><td colspan="8" class="table-empty">Loading job activity…</td></tr></tbody>
+          <thead><tr><th>Job</th><th>Type</th><th>Status</th><th>Attempt</th><th>Owner</th><th>Payload</th><th>Result / error</th><th>Updated</th><th></th></tr></thead>
+          <tbody id="jobs"><tr><td colspan="9" class="table-empty">Loading job activity…</td></tr></tbody>
         </table>
       </div>
     </section>
@@ -317,7 +317,7 @@
       if (!jobs.length) {
         const row = document.createElement("tr");
         const cell = document.createElement("td");
-        cell.colSpan = 8;
+        cell.colSpan = 9;
         cell.className = "table-empty";
         cell.textContent = state.filter === "all" ? "No jobs yet. Launch one above." : `No ${state.filter.replace("_", " ")} jobs in the recent sample.`;
         row.append(cell);
@@ -343,6 +343,7 @@
         const attempt = cell(`${job.attempt_count} / ${job.max_attempts}`, "mono");
         const owner = cell(job.lease_owner || "—", "mono");
         const payload = cell(JSON.stringify(job.payload || {}), "payload");
+        const outcome = cell(job.last_error || (job.result != null ? JSON.stringify(job.result) : "—"), "payload");
         const updated = cell(relativeTime(job.updated_at), "mono");
         const action = document.createElement("td");
         if (["queued", "retry_wait"].includes(job.status)) {
@@ -360,7 +361,7 @@
           retry.addEventListener("click", () => retryJob(job.job_id, retry));
           action.append(retry);
         }
-        row.append(idCell, type, statusCell, attempt, owner, payload, updated, action);
+        row.append(idCell, type, statusCell, attempt, owner, payload, outcome, updated, action);
         root.append(row);
       });
     }
