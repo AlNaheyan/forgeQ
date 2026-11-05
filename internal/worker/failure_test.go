@@ -40,6 +40,54 @@ func (f handlerFunc) Execute(ctx context.Context, data json.RawMessage) (any, er
 	return f(ctx, data)
 }
 
+type leaseLosingBroker struct{ recordingBroker }
+
+func (*leaseLosingBroker) RenewLease(context.Context, string, string, int64) (time.Time, error) {
+	return time.Time{}, errors.New("lease expired")
+}
+
+func TestLeaseLossCancelsHandlerAndDiscardsOutcome(t *testing.T) {
+	b := &leaseLosingBroker{}
+	canceled := make(chan struct{}, 1)
+	handler := handlerFunc(func(ctx context.Context, _ json.RawMessage) (any, error) {
+		<-ctx.Done()
+		canceled <- struct{}{}
+		return "ignored", ctx.Err()
+	})
+	w, err := NewWithBroker(Config{ID: "w", Concurrency: 1, PollInterval: time.Millisecond, LeaseRenewInterval: 5 * time.Millisecond, JobTimeout: time.Second, JobTypes: []string{"custom"}}, b, map[string]Handler{"custom": handler}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.execute(context.Background(), jobs.Job{ID: "job", Type: "custom", LeaseGeneration: 2, Payload: json.RawMessage(`{}`)}, handler)
+	select {
+	case <-canceled:
+	default:
+		t.Fatal("handler did not receive lease cancellation")
+	}
+	if b.completed || b.failure != "" {
+		t.Fatal("terminal outcome reported after lease loss")
+	}
+}
+
+func TestExecutionSuppliesJobMetadata(t *testing.T) {
+	b := &recordingBroker{}
+	handler := handlerFunc(func(ctx context.Context, _ json.RawMessage) (any, error) {
+		m, ok := MetadataFromContext(ctx)
+		if !ok || m.TenantID != "tenant" || m.JobID != "job" || m.JobType != "custom" || m.SubmissionKey != "submission" || m.Attempt != 3 || m.LeaseGeneration != 7 {
+			t.Errorf("unexpected metadata: %+v, %v", m, ok)
+		}
+		return map[string]bool{"ok": true}, nil
+	})
+	w, err := NewWithBroker(Config{ID: "w", Concurrency: 1, PollInterval: time.Millisecond, RequireTenant: true, JobTypes: []string{"custom"}}, b, map[string]Handler{"custom": handler}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.execute(context.Background(), jobs.Job{ID: "job", TenantID: "tenant", Type: "custom", IdempotencyKey: "submission", AttemptCount: 3, LeaseGeneration: 7, Payload: json.RawMessage(`{}`)}, handler)
+	if !b.completed {
+		t.Fatal("job did not complete")
+	}
+}
+
 func TestExecutionClassifiesAndRedactsFailures(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
