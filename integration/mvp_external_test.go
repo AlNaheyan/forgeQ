@@ -207,12 +207,17 @@ func TestExternalInvoiceAppRecoversLostCompletion(t *testing.T) {
 				chrome, _ = exec.LookPath("google-chrome")
 			}
 		}
-		_, nodeErr := exec.LookPath("node")
+		node, nodeErr := exec.LookPath("node")
+		if nodeErr == nil {
+			probeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+			defer cancel()
+			nodeErr = exec.CommandContext(probeCtx, node, "-e", `if(typeof WebSocket !== "function") process.exit(1)`).Run()
+		}
 		if chrome == "" || nodeErr != nil {
 			if os.Getenv("FORGEQ_REQUIRE_BROWSER") == "1" {
-				t.Fatal("Chrome and Node are required for the dashboard check")
+				t.Fatal("Chrome and Node with WebSocket support are required for the dashboard check")
 			}
-			t.Skip("Chrome or Node unavailable")
+			t.Skip("Chrome or Node with WebSocket support unavailable")
 		}
 		script, err := filepath.Abs("../scripts/test-dashboard-mvp.mjs")
 		if err != nil {
