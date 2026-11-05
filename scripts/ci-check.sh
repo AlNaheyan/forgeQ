@@ -8,6 +8,7 @@ case "${1:-unit}" in
     test -z "$(gofmt -l $files)" || { echo 'Go formatting drift' >&2; exit 1; }
     go vet -p 1 ./...
     go test -p 1 -count=1 ./...
+    (cd examples/invoice-app && go vet -p 1 ./... && go test -p 1 -count=1 ./...)
     ;;
   race) go test -p 1 -race -count=1 ./internal/worker ./internal/coordinator ./internal/queue ./internal/tenant ;;
   integration) bash scripts/test-recovery.sh ;;
