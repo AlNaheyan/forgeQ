@@ -6,34 +6,38 @@ platform. Execution is at least once: external effects need idempotency.
 
 ## Configuration
 
-- Keep PostgreSQL, Redis, worker RPCs, and metrics private. Use HTTPS termination
-  for public HTTP; internal RPC transport currently assumes a trusted network.
-- API, coordinator, and workers need the same random `CONTROL_PLANE_TOKEN`.
-  Tenant API keys are separate; issue them with `go run ./cmd/tenant`.
-- The optional `docker-compose.operations.yml` overlay adds resource limits
-  and requires `POSTGRES_PASSWORD` and `GRAFANA_ADMIN_PASSWORD`. Use a random hex
-  database password so it is safe inside the connection URL. Existing database
-  volumes require explicit role-password rotation, not just an environment edit.
-- Prometheus needs a dedicated operator API key saved as token-only text in
-  `deployments/secrets/prometheus-api-key`, readable by the container user.
-  This directory must remain untracked. The base Grafana anonymous-admin setup
-  is local-only; the operations overlay enables login.
+- The base Compose configuration is for local development. Its control-plane
+  token is separate from tenant API keys, which can be issued with
+  `go run ./cmd/tenant`.
+- Production requires HTTPS, authenticated TLS for worker RPCs, PostgreSQL and
+  Redis, and service-specific secret files. Follow [network security](security/NETWORK.md),
+  [database roles](security/DATABASE-ROLES.md), and [secret rotation](security/ROTATION.md).
+  Keep service endpoints and metrics private.
+- Run the privileged migration job before starting production services. Runtime
+  services validate the schema using their restricted database roles. Local
+  development may apply migrations automatically.
+- Configure an operator API key for authenticated Prometheus scrapes and Grafana
+  login through the production secrets and operations overlay. Keep secrets out
+  of the repository.
+- Configure `FORGEQ_JOB_TYPES` on the API for the handlers your application
+  workers support. The bundled example worker handles only `sleep` and `fail`;
+  application workers register their own handlers through the Go worker SDK.
 - Kafka is optional, via `docker-compose.kafka.yml`; it carries outbox lifecycle
   events, not job dispatch. Consumers must tolerate duplicates.
 
 ## Backups and upgrades
 
-Run `bash scripts/backup-postgres.sh /absolute/new/backup.dump`. Encrypt backups
-and store them off-host; they contain tenant data and credential verifiers.
-Restore with PostgreSQL 16 `pg_restore --single-transaction --exit-on-error
---no-owner --no-acl` into a new, empty, isolated database. Never restore over
-running production data. Verify jobs, tenant access, results, and idempotency
-records before cutover. Restore all durable state together and rebuild Redis
-hints through reconciliation. Effects after the backup snapshot may repeat.
+Use `bash scripts/backup-postgres.sh once`, `schedule`, `retention`, or `restore`
+with the required configuration in the [backup guide](backup/README.md). The
+implemented storage target is local; operators must arrange encrypted off-host
+storage and test access to recovery keys. Restore into a new, empty, isolated
+database and verify jobs, tenant access, results, and idempotency records before
+cutover. Restore durable state together and rebuild Redis hints through
+reconciliation. Effects after the backup snapshot may repeat.
 
 Before upgrading, back up and rehearse with `make test-operations`. Stop
-admission and drain/stop services, then deploy the reviewed images together.
-The API applies migrations before readiness. Prefer forward fixes over schema
+admission and drain/stop services, then run the production migration job and
+deploy the reviewed images together. Prefer forward fixes over schema
 downgrades; never delete migration-history rows to force rollback. The default
 worker shutdown deadline is eight seconds, so longer jobs can be recovered and
 re-executed. `/readyz` checks PostgreSQL/Redis, not available worker capacity.
