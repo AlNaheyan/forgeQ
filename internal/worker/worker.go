@@ -64,6 +64,17 @@ func (w *Worker) ActiveJobs() int {
 // SupportedJobTypes returns the capabilities actually selected at startup.
 func (w *Worker) SupportedJobTypes() []string { return append([]string(nil), w.config.JobTypes...) }
 
+// ConfigureLeaseRenewal sets the renewal interval before Run starts.
+func (w *Worker) ConfigureLeaseRenewal(interval time.Duration) error {
+	renewer, err := NewLeaseRenewer(w.broker, interval)
+	if err != nil {
+		return err
+	}
+	w.renewer = renewer
+	w.config.LeaseRenewInterval = interval
+	return nil
+}
+
 func New(config Config, repository jobRepository, workQueue workQueue, handlers map[string]Handler, logger *slog.Logger) (*Worker, error) {
 	if repository == nil || workQueue == nil {
 		return nil, errors.New("worker repository and queue are required")

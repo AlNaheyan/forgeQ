@@ -72,6 +72,31 @@ func TestHeartbeatReregistersAfterCoordinatorLosesWorker(t *testing.T) {
 	}
 }
 
+func TestReregistrationRevalidatesCoordinatorLease(t *testing.T) {
+	rpc := &fakeCoordinatorRPC{loseRegistration: true, settings: RemoteSettings{HeartbeatInterval: time.Millisecond, LeaseDuration: time.Second}}
+	invalid := errors.New("lease no longer safe")
+	checks := 0
+	r, err := NewRemoteCoordinator(RemoteConfig{WorkerID: "worker", MaxConcurrency: 1, ValidateSettings: func(RemoteSettings) error {
+		checks++
+		if checks > 1 {
+			return invalid
+		}
+		return nil
+	}}, rpc, func() int { return 0 }, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = r.Register(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err = r.RunHeartbeat(context.Background(), time.Millisecond); !errors.Is(err, invalid) {
+		t.Fatalf("re-registration error=%v", err)
+	}
+	if checks != 2 {
+		t.Fatalf("settings checks=%d", checks)
+	}
+}
+
 func (f *fakeCoordinatorRPC) snapshot() ([]RegistrationRequest, []HeartbeatMessage) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

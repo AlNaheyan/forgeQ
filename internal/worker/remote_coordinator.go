@@ -50,6 +50,7 @@ type RemoteConfig struct {
 	MaxRetryDelay     time.Duration
 	Now               func() time.Time
 	Retryable         func(error) bool
+	ValidateSettings  func(RemoteSettings) error
 }
 
 // RemoteCoordinator manages a worker's registration and heartbeat lifecycle.
@@ -64,6 +65,7 @@ type RemoteCoordinator struct {
 	maxRetryDelay     time.Duration
 	now               func() time.Time
 	retryable         func(error) bool
+	validateSettings  func(RemoteSettings) error
 	logger            *slog.Logger
 }
 
@@ -111,6 +113,7 @@ func NewRemoteCoordinator(config RemoteConfig, rpc CoordinatorRPC, activeJobs fu
 		maxRetryDelay:     config.MaxRetryDelay,
 		now:               config.Now,
 		retryable:         config.Retryable,
+		validateSettings:  config.ValidateSettings,
 		logger:            logger.With("worker_id", config.WorkerID),
 	}, nil
 }
@@ -129,6 +132,11 @@ func (r *RemoteCoordinator) Register(ctx context.Context) (RemoteSettings, error
 		if err == nil {
 			if settings.HeartbeatInterval <= 0 {
 				return RemoteSettings{}, errors.New("coordinator returned a non-positive heartbeat interval")
+			}
+			if r.validateSettings != nil {
+				if err := r.validateSettings(settings); err != nil {
+					return RemoteSettings{}, fmt.Errorf("coordinator settings: %w", err)
+				}
 			}
 			r.logger.Info("worker registered with coordinator",
 				"heartbeat_interval", settings.HeartbeatInterval,

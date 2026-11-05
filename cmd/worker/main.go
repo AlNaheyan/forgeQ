@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -85,6 +86,12 @@ func run() error {
 		WorkerID:          process.ID(),
 		MaxConcurrency:    cfg.WorkerConcurrency,
 		SupportedJobTypes: process.SupportedJobTypes(),
+		ValidateSettings: func(settings workerpkg.RemoteSettings) error {
+			if cfg.LeaseRenewInterval <= 0 || cfg.LeaseRenewInterval >= settings.LeaseDuration {
+				return errors.New("lease renewal interval must be shorter than the coordinator lease")
+			}
+			return nil
+		},
 	}, remoteRPC, process.ActiveJobs, logger)
 	if err != nil {
 		return fmt.Errorf("initialize worker registration: %w", err)

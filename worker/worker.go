@@ -109,7 +109,8 @@ func Run(ctx context.Context, cfg Config, tasks ...Task) error {
 	if cfg.PollInterval == 0 {
 		cfg.PollInterval = 250 * time.Millisecond
 	}
-	if cfg.LeaseRenewInterval == 0 {
+	autoRenew := cfg.LeaseRenewInterval == 0
+	if autoRenew {
 		cfg.LeaseRenewInterval = 10 * time.Second
 	}
 	if cfg.JobTimeout == 0 {
@@ -194,7 +195,27 @@ func Run(ctx context.Context, cfg Config, tasks ...Task) error {
 	if err != nil {
 		return err
 	}
-	remote, err := internalworker.NewRemoteCoordinator(internalworker.RemoteConfig{WorkerID: process.ID(), MaxConcurrency: cfg.Concurrency, SupportedJobTypes: process.SupportedJobTypes()}, internalworker.NewGRPCCoordinatorRPC(client).WithTimeout(cfg.RPCTimeout), process.ActiveJobs, cfg.Logger)
+	interval := cfg.LeaseRenewInterval
+	configured := false
+	validateSettings := func(settings internalworker.RemoteSettings) error {
+		if !configured {
+			if autoRenew && settings.LeaseDuration/3 < interval {
+				interval = settings.LeaseDuration / 3
+			}
+			if interval <= 0 || interval >= settings.LeaseDuration {
+				return errors.New("lease renewal interval must be positive and shorter than the coordinator lease")
+			}
+			if err := process.ConfigureLeaseRenewal(interval); err != nil {
+				return err
+			}
+			configured = true
+		}
+		if interval >= settings.LeaseDuration {
+			return errors.New("coordinator lease became shorter than the renewal interval; restart worker")
+		}
+		return nil
+	}
+	remote, err := internalworker.NewRemoteCoordinator(internalworker.RemoteConfig{WorkerID: process.ID(), MaxConcurrency: cfg.Concurrency, SupportedJobTypes: process.SupportedJobTypes(), ValidateSettings: validateSettings}, internalworker.NewGRPCCoordinatorRPC(client).WithTimeout(cfg.RPCTimeout), process.ActiveJobs, cfg.Logger)
 	if err != nil {
 		return err
 	}

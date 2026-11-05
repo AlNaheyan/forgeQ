@@ -23,11 +23,17 @@ type coordinatorFixture struct {
 	claimed    atomic.Bool
 	completed  chan *workerpb.CompleteJobRequest
 	registered chan []string
+	lease      time.Duration
+	renewals   atomic.Int32
 }
 
 func (s *coordinatorFixture) RegisterWorker(_ context.Context, req *workerpb.RegisterWorkerRequest) (*workerpb.RegisterWorkerResponse, error) {
 	s.registered <- req.GetSupportedJobTypes()
-	return &workerpb.RegisterWorkerResponse{HeartbeatInterval: durationpb.New(time.Second), LeaseDuration: durationpb.New(time.Minute)}, nil
+	lease := s.lease
+	if lease == 0 {
+		lease = time.Minute
+	}
+	return &workerpb.RegisterWorkerResponse{HeartbeatInterval: durationpb.New(time.Second), LeaseDuration: durationpb.New(lease)}, nil
 }
 func (*coordinatorFixture) Heartbeat(context.Context, *workerpb.HeartbeatRequest) (*workerpb.HeartbeatResponse, error) {
 	return &workerpb.HeartbeatResponse{Accepted: true}, nil
@@ -45,9 +51,57 @@ func (s *coordinatorFixture) CompleteJob(_ context.Context, req *workerpb.Comple
 	s.completed <- req
 	return &workerpb.CompleteJobResponse{}, nil
 }
+func (s *coordinatorFixture) RenewLease(context.Context, *workerpb.RenewLeaseRequest) (*workerpb.RenewLeaseResponse, error) {
+	s.renewals.Add(1)
+	return &workerpb.RenewLeaseResponse{LeaseExpiresAt: timestamppb.New(time.Now().Add(time.Minute))}, nil
+}
 func fixtureJob() *workerpb.Job {
 	now := timestamppb.Now()
 	return &workerpb.Job{Id: "job-1", TenantId: "tenant-1", Type: "invoice.send", PayloadJson: []byte(`{"invoice_id":"inv-1"}`), AttemptCount: 1, LeaseGeneration: 2, ScheduledAt: now, CreatedAt: now, UpdatedAt: now}
+}
+
+func TestWorkerAdaptsRenewalToCoordinatorLease(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := grpc.NewServer()
+	fixture := &coordinatorFixture{completed: make(chan *workerpb.CompleteJobRequest, 1), registered: make(chan []string, 1), lease: 60 * time.Millisecond}
+	workerpb.RegisterWorkerCoordinatorServer(server, fixture)
+	go server.Serve(listener)
+	defer server.Stop()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- worker.Run(ctx, worker.Config{CoordinatorAddr: listener.Addr().String(), WorkerID: "worker-1", PollInterval: time.Millisecond, AllowInsecure: true, DevelopmentToken: strings.Repeat("x", 32), Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}, worker.Task{Name: "invoice.send", Handle: func(ctx context.Context, _ json.RawMessage) (any, error) {
+			select {
+			case <-time.After(120 * time.Millisecond):
+				return "ok", nil
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}})
+	}()
+	select {
+	case <-fixture.completed:
+	case err := <-done:
+		t.Fatalf("worker stopped: %v", err)
+	case <-time.After(3 * time.Second):
+		t.Fatal("job did not finish")
+	}
+	if fixture.renewals.Load() < 1 {
+		t.Fatal("long job completed without renewing the short lease")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("worker did not stop")
+	}
 }
 
 func TestPublicWorkerRegistersRunsHandlerAndDrains(t *testing.T) {
