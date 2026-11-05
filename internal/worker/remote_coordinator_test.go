@@ -15,6 +15,7 @@ type fakeCoordinatorRPC struct {
 	registerFailures  int
 	heartbeatFailures int
 	rejectHeartbeat   bool
+	loseRegistration  bool
 	settings          RemoteSettings
 	registrations     []RegistrationRequest
 	heartbeats        []HeartbeatMessage
@@ -37,6 +38,7 @@ func (f *fakeCoordinatorRPC) Heartbeat(_ context.Context, heartbeat HeartbeatMes
 	count := len(f.heartbeats)
 	failure := count <= f.heartbeatFailures
 	reject := f.rejectHeartbeat
+	lost := f.loseRegistration && count == 1
 	callback := f.onHeartbeat
 	f.mu.Unlock()
 	if callback != nil {
@@ -45,7 +47,29 @@ func (f *fakeCoordinatorRPC) Heartbeat(_ context.Context, heartbeat HeartbeatMes
 	if failure {
 		return false, errors.New("coordinator unavailable")
 	}
+	if lost {
+		return false, ErrWorkerNotRegistered
+	}
 	return !reject, nil
+}
+
+func TestHeartbeatReregistersAfterCoordinatorLosesWorker(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	rpc := &fakeCoordinatorRPC{loseRegistration: true, settings: RemoteSettings{HeartbeatInterval: time.Millisecond, LeaseDuration: time.Second}}
+	rpc.onHeartbeat = func(count int) {
+		if count == 2 {
+			cancel()
+		}
+	}
+	remote := newTestRemote(t, rpc, func() int { return 0 })
+	if err := remote.RunHeartbeat(ctx, time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	registrations, heartbeats := rpc.snapshot()
+	if len(registrations) != 1 || len(heartbeats) != 2 {
+		t.Fatalf("registrations=%d heartbeats=%d", len(registrations), len(heartbeats))
+	}
 }
 
 func (f *fakeCoordinatorRPC) snapshot() ([]RegistrationRequest, []HeartbeatMessage) {

@@ -79,6 +79,9 @@ func (r *GRPCCoordinatorRPC) Heartbeat(ctx context.Context, heartbeat HeartbeatM
 		Timestamp:      timestamp,
 	})
 	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return false, ErrWorkerNotRegistered
+		}
 		return false, classifyGRPCError(err)
 	}
 	if response == nil {

@@ -11,6 +11,7 @@ import (
 )
 
 var ErrHeartbeatRejected = errors.New("coordinator rejected worker heartbeat")
+var ErrWorkerNotRegistered = errors.New("worker is not registered with coordinator")
 
 // RegistrationRequest describes the worker capacity advertised to the
 // coordinator.
@@ -173,6 +174,19 @@ func (r *RemoteCoordinator) RunHeartbeat(ctx context.Context, interval time.Dura
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil
+			}
+			if errors.Is(err, ErrWorkerNotRegistered) {
+				settings, registerErr := r.Register(ctx)
+				if registerErr != nil {
+					if ctx.Err() != nil {
+						return nil
+					}
+					return registerErr
+				}
+				interval = settings.HeartbeatInterval
+				waitDelay = 0
+				retryDelay = r.initialRetryDelay
+				continue
 			}
 			if !r.retryable(err) {
 				return fmt.Errorf("send worker heartbeat: %w", err)
