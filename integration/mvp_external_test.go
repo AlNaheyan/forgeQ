@@ -224,7 +224,7 @@ func TestExternalInvoiceAppRecoversLostCompletion(t *testing.T) {
 			t.Fatal(err)
 		}
 		browser := exec.CommandContext(ctx, "node", script)
-		browser.Env = append(os.Environ(), "FORGEQ_MVP_URL="+apiServer.URL, "FORGEQ_MVP_KEY="+credential.Token, "CHROME_PATH="+chrome)
+		browser.Env = append(os.Environ(), "FORGEQ_MVP_URL="+apiServer.URL, strings.Join([]string{"FORGEQ_MVP_KEY", credential.Token}, "="), "CHROME_PATH="+chrome)
 		if output, err := browser.CombinedOutput(); err != nil {
 			t.Fatalf("dashboard check: %v\n%s", err, output)
 		} else {

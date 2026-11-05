@@ -1,0 +1,2 @@
+# Test code passes a generated credential to a subprocess; no key is embedded.
+76245c8cbddbc007c7f39f6304dc875b1a5731a2:integration/mvp_external_test.go:generic-api-key:206
