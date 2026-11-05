@@ -11,12 +11,33 @@ import (
 	"time"
 
 	"github.com/AlNaheyan/forgeQ/internal/jobs"
+	"github.com/AlNaheyan/forgeQ/internal/jobtypes"
 )
 
 type recordingBroker struct {
 	failure   string
 	retryable bool
 	completed bool
+}
+
+func TestValidatorPanicDoesNotCrashWorkerOrExposeDetails(t *testing.T) {
+	registry, err := jobtypes.NewRegistry([]jobtypes.Descriptor{{Name: "custom", MaxPayloadBytes: 100, Validate: func(json.RawMessage) error { panic("private payload") }}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := &recordingBroker{}
+	handler := handlerFunc(func(context.Context, json.RawMessage) (any, error) {
+		t.Error("handler ran after validation panic")
+		return nil, nil
+	})
+	w, err := NewWithBroker(Config{ID: "w", Concurrency: 1, PollInterval: time.Millisecond, JobTypes: []string{"custom"}, Registry: registry}, b, map[string]Handler{"custom": handler}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.execute(context.Background(), jobs.Job{ID: "job", Type: "custom", Payload: json.RawMessage(`{}`)}, handler)
+	if b.failure != "panic" || b.retryable || b.completed {
+		t.Fatalf("failure=%q retryable=%v completed=%v", b.failure, b.retryable, b.completed)
+	}
 }
 
 func (*recordingBroker) ClaimJob(context.Context, string, []string) (jobs.Job, error) {

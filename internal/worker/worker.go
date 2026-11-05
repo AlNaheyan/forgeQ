@@ -254,9 +254,7 @@ func (w *Worker) execute(ctx context.Context, job jobs.Job, handler Handler) {
 		registry = jobtypes.Fixtures()
 	}
 	if _, known := registry.Lookup(job.Type); known {
-		if err := registry.Validate(job.Type, job.Payload); err != nil {
-			executionErr = &HandlerError{Code: FailureInvalidPayload, Cause: err}
-		}
+		executionErr = validateSafely(registry, job.Type, job.Payload)
 	}
 	if executionErr == nil {
 		result, executionErr = executeSafely(executionCtx, handler, job.Payload)
@@ -324,6 +322,18 @@ func (w *Worker) execute(ctx context.Context, job jobs.Job, handler Handler) {
 		return
 	}
 	w.logger.Info("job completed", attributes...)
+}
+
+func validateSafely(registry *jobtypes.Registry, name string, payload json.RawMessage) (err error) {
+	defer func() {
+		if recover() != nil {
+			err = &HandlerError{Code: FailurePanic}
+		}
+	}()
+	if validationErr := registry.Validate(name, payload); validationErr != nil {
+		return &HandlerError{Code: FailureInvalidPayload, Cause: validationErr}
+	}
+	return nil
 }
 
 func executeSafely(ctx context.Context, handler Handler, payload json.RawMessage) (result any, err error) {
