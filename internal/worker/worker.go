@@ -197,7 +197,7 @@ func (w *Worker) Run(ctx context.Context) error {
 			<-semaphore
 			w.logger.Error("coordinator returned unsupported job", "job_id", claimed.ID, "job_type", claimed.Type)
 			finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-			_ = w.broker.FailJob(finishCtx, w.config.ID, claimed.ID, "worker has no handler for job type", false, claimed.LeaseGeneration)
+			_ = w.broker.FailJob(finishCtx, w.config.ID, claimed.ID, string(FailureUnsupportedType), false, claimed.LeaseGeneration)
 			cancel()
 			continue
 		}

@@ -329,6 +329,7 @@ func (s *GRPCServer) FailJob(ctx context.Context, request *workerpb.FailJobReque
 	_, _ = s.registry.Release(request.GetWorkerId())
 	if s.metrics != nil {
 		s.metrics.JobsFailed.Inc()
+		s.metrics.RecordHandlerFailure(request.GetError())
 		s.observeJobDuration(current.UpdatedAt)
 		switch job.Status {
 		case jobs.StatusRetryWait:

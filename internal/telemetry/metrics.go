@@ -24,6 +24,7 @@ type Metrics struct {
 	JobsStarted            prometheus.Counter
 	JobsCompleted          prometheus.Counter
 	JobsFailed             prometheus.Counter
+	HandlerFailures        *prometheus.CounterVec
 	JobsRetried            prometheus.Counter
 	JobsDeadLetter         prometheus.Counter
 	QueueDepth             prometheus.Gauge
@@ -104,6 +105,7 @@ func NewMetrics() *Metrics {
 		JobsStarted:            prometheus.NewCounter(prometheus.CounterOpts{Name: "forgequeue_jobs_started_total", Help: "Job attempts started by workers."}),
 		JobsCompleted:          prometheus.NewCounter(prometheus.CounterOpts{Name: "forgequeue_jobs_completed_total", Help: "Jobs completed successfully."}),
 		JobsFailed:             prometheus.NewCounter(prometheus.CounterOpts{Name: "forgequeue_jobs_failed_total", Help: "Job attempts that failed."}),
+		HandlerFailures:        prometheus.NewCounterVec(prometheus.CounterOpts{Name: "forgequeue_handler_failures_total", Help: "Failed job attempts by bounded classification."}, []string{"code"}),
 		JobsRetried:            prometheus.NewCounter(prometheus.CounterOpts{Name: "forgequeue_jobs_retried_total", Help: "Failed jobs scheduled for retry."}),
 		JobsDeadLetter:         prometheus.NewCounter(prometheus.CounterOpts{Name: "forgequeue_jobs_dead_letter_total", Help: "Jobs moved to the dead-letter state."}),
 		QueueDepth:             prometheus.NewGauge(prometheus.GaugeOpts{Name: "forgequeue_queue_depth", Help: "Jobs currently visible in the ready queue."}),
@@ -121,7 +123,7 @@ func NewMetrics() *Metrics {
 	}
 	registry.MustRegister(m.TLSCertificateNotAfter,
 		m.DurableHealth, m.DurableQueueDepth, m.OldestReadyAge, m.OutboxLag, m.RetentionLastSuccess, m.RetentionDeleted, m.RetentionErrors,
-		m.JobsSubmitted, m.JobsStarted, m.JobsCompleted, m.JobsFailed,
+		m.JobsSubmitted, m.JobsStarted, m.JobsCompleted, m.JobsFailed, m.HandlerFailures,
 		m.JobsRetried, m.JobsDeadLetter, m.QueueDepth, m.JobDuration,
 		m.JobQueueWait, m.WorkersRegistered, m.WorkersHealthy,
 		m.WorkersUnhealthy, m.ActiveJobs, m.LeaseExpirations,
@@ -142,6 +144,16 @@ func (m *Metrics) Gatherer() prometheus.Gatherer { return m.registry }
 // RecordBackpressureRejection implements jobs.BackpressureObserver without
 // coupling the telemetry package to the jobs package.
 func (m *Metrics) RecordBackpressureRejection() { m.BackpressureRejections.Inc() }
+
+// RecordHandlerFailure maps legacy or arbitrary error text to a bounded label.
+func (m *Metrics) RecordHandlerFailure(code string) {
+	switch code {
+	case "invalid_payload", "unsupported_type", "permanent", "result_invalid", "panic", "downstream_unavailable", "rate_limited", "timeout", "unclassified":
+	default:
+		code = "unclassified"
+	}
+	m.HandlerFailures.WithLabelValues(code).Inc()
+}
 
 // ObserveAPIRequest records an HTTP request using bounded-cardinality labels.
 func (m *Metrics) ObserveAPIRequest(method, route string, status int, duration time.Duration) {
