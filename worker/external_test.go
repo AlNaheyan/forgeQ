@@ -17,7 +17,7 @@ func TestExternalModuleImportsPublicWorker(t *testing.T) {
 		t.Fatal(err)
 	}
 	root := filepath.Dir(current)
-	module := fmt.Sprintf("module example.com/forgeq-consumer\n\ngo 1.26.10\n\nrequire github.com/AlNaheyan/forgeQ v0.0.0\n\nreplace github.com/AlNaheyan/forgeQ => %s\n", filepath.ToSlash(root))
+	module := fmt.Sprintf("module example.com/forgeq-consumer\n\ngo 1.26.10\n\nrequire github.com/AlNaheyan/forgeQ v0.0.0\n\nreplace github.com/AlNaheyan/forgeQ => %q\n", filepath.ToSlash(root))
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(module), 0600); err != nil {
 		t.Fatal(err)
 	}
