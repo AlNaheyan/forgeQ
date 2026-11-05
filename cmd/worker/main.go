@@ -84,7 +84,7 @@ func run() error {
 	remote, err := workerpkg.NewRemoteCoordinator(workerpkg.RemoteConfig{
 		WorkerID:          process.ID(),
 		MaxConcurrency:    cfg.WorkerConcurrency,
-		SupportedJobTypes: cfg.WorkerJobTypes,
+		SupportedJobTypes: process.SupportedJobTypes(),
 	}, remoteRPC, process.ActiveJobs, logger)
 	if err != nil {
 		return fmt.Errorf("initialize worker registration: %w", err)

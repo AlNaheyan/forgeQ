@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -60,6 +61,9 @@ func (w *Worker) ActiveJobs() int {
 	return int(w.activeJobs.Load())
 }
 
+// SupportedJobTypes returns the capabilities actually selected at startup.
+func (w *Worker) SupportedJobTypes() []string { return append([]string(nil), w.config.JobTypes...) }
+
 func New(config Config, repository jobRepository, workQueue workQueue, handlers map[string]Handler, logger *slog.Logger) (*Worker, error) {
 	if repository == nil || workQueue == nil {
 		return nil, errors.New("worker repository and queue are required")
@@ -96,6 +100,7 @@ func NewWithBroker(config Config, broker Broker, handlers map[string]Handler, lo
 	if broker == nil {
 		return nil, errors.New("worker broker is required")
 	}
+	config.JobTypes = append([]string(nil), config.JobTypes...)
 	selectedHandlers := make(map[string]Handler, len(config.JobTypes))
 	for _, jobType := range config.JobTypes {
 		if config.Registry != nil {
@@ -107,7 +112,7 @@ func NewWithBroker(config Config, broker Broker, handlers map[string]Handler, lo
 			return nil, fmt.Errorf("duplicate worker job type %q", jobType)
 		}
 		handler, ok := handlers[jobType]
-		if !ok || handler == nil {
+		if !ok || handler == nil || nilHandler(handler) {
 			return nil, fmt.Errorf("worker does not have a handler for configured job type %q", jobType)
 		}
 		selectedHandlers[jobType] = handler
@@ -127,6 +132,16 @@ func NewWithBroker(config Config, broker Broker, handlers map[string]Handler, lo
 		logger:   logger.With("worker_id", config.ID),
 		renewer:  renewer,
 	}, nil
+}
+
+func nilHandler(handler Handler) bool {
+	v := reflect.ValueOf(handler)
+	switch v.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return v.IsNil()
+	default:
+		return false
+	}
 }
 
 func (w *Worker) Run(ctx context.Context) error {
