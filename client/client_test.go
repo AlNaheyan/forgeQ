@@ -117,6 +117,23 @@ func TestResponseLimitAndRetryAfterDeadline(t *testing.T) {
 	}
 }
 
+func TestLongRetryAfterReturnsErrorWithoutIndefiniteWait(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Retry-After", "3600")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		fmt.Fprint(w, `{"error":{"code":"not_ready"}}`)
+	}))
+	defer server.Close()
+	start := time.Now()
+	_, err := testClient(t, server).Get(context.Background(), "job-1")
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusServiceUnavailable || calls.Load() != 1 || time.Since(start) > time.Second {
+		t.Fatalf("calls=%d err=%v", calls.Load(), err)
+	}
+}
+
 func TestListEncodesFiltersAndNoImplicitPagination(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("type") != "invoice.send" || r.URL.Query().Get("cursor") != "next+page" {

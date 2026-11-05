@@ -255,6 +255,14 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 			return apiErr
 		}
 		delay := retryAfter(response.Header.Get("Retry-After"), time.Now())
+		// Respect long server delays without blocking indefinitely: let the
+		// caller decide when to retry instead of retrying sooner than advised.
+		if delay > 5*time.Second {
+			if deadline, ok := ctx.Deadline(); ok && time.Until(deadline) < delay {
+				return context.DeadlineExceeded
+			}
+			return apiErr
+		}
 		if err := c.wait(ctx, attempt, delay); err != nil {
 			return err
 		}
