@@ -181,4 +181,33 @@ func TestExternalInvoiceAppRecoversLostCompletion(t *testing.T) {
 	if err != nil || replay.ID != job.ID {
 		t.Fatalf("idempotent submit replay=%+v err=%v", replay, err)
 	}
+	t.Run("dashboard", func(t *testing.T) {
+		chrome := os.Getenv("CHROME_PATH")
+		if chrome == "" {
+			candidate := "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+			if _, err := os.Stat(candidate); err == nil {
+				chrome = candidate
+			} else {
+				chrome, _ = exec.LookPath("google-chrome")
+			}
+		}
+		_, nodeErr := exec.LookPath("node")
+		if chrome == "" || nodeErr != nil {
+			if os.Getenv("FORGEQ_REQUIRE_BROWSER") == "1" {
+				t.Fatal("Chrome and Node are required for the dashboard check")
+			}
+			t.Skip("Chrome or Node unavailable")
+		}
+		script, err := filepath.Abs("../scripts/test-dashboard-mvp.mjs")
+		if err != nil {
+			t.Fatal(err)
+		}
+		browser := exec.CommandContext(ctx, "node", script)
+		browser.Env = append(os.Environ(), "FORGEQ_MVP_URL="+apiServer.URL, "FORGEQ_MVP_KEY="+credential.Token, "CHROME_PATH="+chrome)
+		if output, err := browser.CombinedOutput(); err != nil {
+			t.Fatalf("dashboard check: %v\n%s", err, output)
+		} else {
+			t.Log(strings.TrimSpace(string(output)))
+		}
+	})
 }
