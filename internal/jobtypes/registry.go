@@ -5,11 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 )
 
 const MaxPayloadBytes = 1 << 20
+
+var validName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 
 type Descriptor struct {
 	Name            string
@@ -22,7 +25,7 @@ type Registry struct{ descriptors map[string]Descriptor }
 func NewRegistry(descriptors []Descriptor) (*Registry, error) {
 	r := &Registry{descriptors: make(map[string]Descriptor, len(descriptors))}
 	for _, d := range descriptors {
-		if d.Name == "" || d.Name != strings.TrimSpace(d.Name) || d.Validate == nil || d.MaxPayloadBytes < 1 || d.MaxPayloadBytes > MaxPayloadBytes {
+		if !validName.MatchString(d.Name) || d.Name != strings.TrimSpace(d.Name) || d.Validate == nil || d.MaxPayloadBytes < 1 || d.MaxPayloadBytes > MaxPayloadBytes {
 			return nil, errors.New("invalid job type descriptor")
 		}
 		if _, exists := r.descriptors[d.Name]; exists {
