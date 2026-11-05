@@ -60,8 +60,9 @@
     form { padding: 18px; }
     label { display: block; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .09em; margin: 0 0 7px; }
     .field { margin-bottom: 15px; }
-    input, select { width: 100%; color: var(--text); background: #0c1219; border: 1px solid var(--border); border-radius: 7px; padding: 10px 11px; outline: none; }
-    input:focus, select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-dim); }
+    input, select, textarea { width: 100%; color: var(--text); background: #0c1219; border: 1px solid var(--border); border-radius: 7px; padding: 10px 11px; outline: none; }
+    input:focus, select:focus, textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-dim); }
+    textarea { min-height: 100px; resize: vertical; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
     .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .hint { color: var(--muted); font-size: 11px; line-height: 1.45; margin-top: 6px; }
     .primary { border: 1px solid #3ba978; border-radius: 7px; padding: 10px 14px; width: 100%; background: #19764f; color: white; font-weight: 650; }
@@ -161,12 +162,12 @@
         <form id="launch-form">
           <div class="field">
             <label for="job-type">Job type</label>
-            <select id="job-type" name="type"><option value="sleep">sleep</option><option value="fail">fail</option></select>
+            <select id="job-type" name="type" disabled><option value="">Connect to load job types</option></select>
           </div>
           <div class="field">
-            <label id="payload-label" for="payload-value">Duration (milliseconds)</label>
-            <input id="payload-value" name="payload-value" type="number" min="0" max="3600000" value="3000" required>
-            <div id="payload-hint" class="hint">The worker waits for this duration, renewing its lease when needed.</div>
+            <label for="payload-json">Payload (JSON object)</label>
+            <textarea id="payload-json" spellcheck="false" required>{}</textarea>
+            <div id="payload-hint" class="hint">Select a job type and provide its JSON payload.</div>
           </div>
           <div class="field-row">
             <div class="field"><label for="priority">Priority</label><input id="priority" type="number" min="-100" max="100" value="0"></div>
@@ -176,7 +177,7 @@
             <label for="idempotency-key">Idempotency key <span style="text-transform:none;letter-spacing:0">(optional)</span></label>
             <input id="idempotency-key" maxlength="255" placeholder="e.g. billing-run-42">
           </div>
-          <button id="launch-button" class="primary" type="submit">Launch job</button>
+          <button id="launch-button" class="primary" type="submit" disabled>Launch job</button>
         </form>
       </article>
 
@@ -207,7 +208,7 @@
   <div id="toast" class="toast" role="status"></div>
 
   <script>
-    const state = { jobs: [], workers: [], filter: "all", refreshing: false, selectedJob: null };
+    const state = { jobs: [], workers: [], jobTypes: [], workerAccess: true, filter: "all", refreshing: false, selectedJob: null };
     const statuses = ["all", "queued", "leased", "running", "succeeded", "failed", "retry_wait", "dead_letter", "canceled"];
     const $ = id => document.getElementById(id);
     let apiKey = "";
@@ -260,7 +261,7 @@
       if (!state.workers.length) {
         const empty = document.createElement("div");
         empty.className = "empty";
-        empty.textContent = "No workers registered";
+        empty.textContent = state.workerAccess ? "No workers registered" : "An operator API key is required to view workers";
         root.append(empty);
         return;
       }
@@ -415,12 +416,15 @@
       if (state.refreshing || !apiKey) return;
       state.refreshing = true;
       try {
-        const [jobResult, workerResult] = await Promise.all([
+        const [jobResult, workerResult, typeResult] = await Promise.all([
           fetchJSON("/v1/jobs?limit=100"),
-          fetchJSON("/v1/workers").catch(error => { if (error.status === 403) return { workers: [] }; throw error; })
+          fetchJSON("/v1/workers").catch(error => { if (error.status === 403) return { workers: [], forbidden: true }; throw error; }),
+          fetchJSON("/v1/job-types")
         ]);
         state.jobs = jobResult.jobs || [];
         state.workers = workerResult.workers || [];
+        state.workerAccess = !workerResult.forbidden;
+        renderJobTypes(typeResult.job_types || []);
         renderStats();
         renderWorkers();
         renderFilters();
@@ -434,6 +438,7 @@
       } catch (error) {
         setConnection("down", "DISCONNECTED");
         state.jobs = []; state.workers = []; state.selectedJob = null;
+        state.jobTypes = []; $("job-type").replaceChildren(); $("job-type").disabled = true; $("launch-button").disabled = true;
         $("job-dialog").close(); $("dialog-json").textContent = "";
         renderStats(); renderJobs(); renderWorkers();
         toast(`Refresh failed: ${error.message}`, true);
@@ -442,22 +447,42 @@
       }
     }
 
+    function renderJobTypes(types) {
+      const previous = $("job-type").value;
+      const signature = JSON.stringify(types);
+      if (signature === JSON.stringify(state.jobTypes)) return;
+      state.jobTypes = types;
+      const select = $("job-type");
+      select.replaceChildren();
+      types.forEach(type => {
+        const option = document.createElement("option");
+        option.value = type.name; option.textContent = type.name; select.append(option);
+      });
+      if (types.some(type => type.name === previous)) select.value = previous;
+      select.disabled = types.length === 0;
+      $("launch-button").disabled = types.length === 0;
+      if (select.value !== previous) updatePayloadField();
+    }
+
     function updatePayloadField() {
-      const fail = $("job-type").value === "fail";
-      $("payload-label").textContent = fail ? "Failures before success" : "Duration (milliseconds)";
-      $("payload-value").max = fail ? "100" : "3600000";
-      $("payload-value").value = fail ? "1" : "3000";
-      $("payload-hint").textContent = fail
-        ? "Fails intentionally until its attempt number exceeds this value, then succeeds."
-        : "The worker waits for this duration, renewing its lease when needed.";
+      const type = $("job-type").value;
+      const sample = type === "sleep" ? { duration_ms: 3000 } : type === "fail" ? { failures_before_success: 1 } : {};
+      $("payload-json").value = JSON.stringify(sample, null, 2);
+      const descriptor = state.jobTypes.find(item => item.name === type);
+      $("payload-hint").textContent = descriptor ? `JSON object, up to ${descriptor.max_payload_bytes} bytes. Application handlers may require specific fields.` : "No job types available.";
     }
 
     $("launch-form").addEventListener("submit", async event => {
       event.preventDefault();
       const button = $("launch-button");
       const type = $("job-type").value;
-      const value = Number($("payload-value").value);
-      const payload = type === "sleep" ? { duration_ms: value } : { failures_before_success: value };
+      let payload;
+      try {
+        payload = JSON.parse($("payload-json").value);
+        if (!payload || Array.isArray(payload) || typeof payload !== "object") throw new Error("Payload must be a JSON object");
+        const descriptor = state.jobTypes.find(item => item.name === type);
+        if (!descriptor || new TextEncoder().encode(JSON.stringify(payload)).length > descriptor.max_payload_bytes) throw new Error("Payload exceeds the job type limit");
+      } catch (error) { toast(`Invalid payload: ${error.message}`, true); return; }
       const request = {
         type,
         payload,
