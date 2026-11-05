@@ -99,8 +99,15 @@ func run(ctx context.Context) error {
 		if e != nil {
 			return e
 		}
-		r := backup.Runner{Store: s, Prefix: prefix, Recipients: recipients, KeyID: os.Getenv("BACKUP_KEY_ID"), Revision: os.Getenv("BACKUP_REVISION"), Schema: os.Getenv("BACKUP_SCHEMA"), DatabaseMajor: os.Getenv("BACKUP_DATABASE_MAJOR"), Observe: backup.StatusObserver(os.Getenv("BACKUP_STATUS_FILE"))}
+		observe := backup.StatusObserver(os.Getenv("BACKUP_STATUS_FILE"))
+		var statusErr error
+		r := backup.Runner{Store: s, Prefix: prefix, Recipients: recipients, KeyID: os.Getenv("BACKUP_KEY_ID"), Revision: os.Getenv("BACKUP_REVISION"), Schema: os.Getenv("BACKUP_SCHEMA"), DatabaseMajor: os.Getenv("BACKUP_DATABASE_MAJOR"), Observe: func(m backup.Manifest, elapsed time.Duration, operationErr error) {
+			statusErr = observe(m, elapsed, operationErr)
+		}}
 		m, e := r.Backup(ctx, backup.DumpPostgres(dsn))
+		if statusErr != nil {
+			return errors.New("backup status publication failed; inspect backup storage and status permissions")
+		}
 		if e == nil {
 			e = json.NewEncoder(os.Stdout).Encode(m)
 		}

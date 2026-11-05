@@ -35,56 +35,58 @@ func ReadStatus(path string) (Status, error) {
 	return s, nil
 }
 
-func StatusObserver(path string) Observer {
-	return func(m Manifest, elapsed time.Duration, operationErr error) {
+func StatusObserver(path string) func(Manifest, time.Duration, error) error {
+	return func(m Manifest, elapsed time.Duration, operationErr error) error {
 		if path == "" {
-			return
+			return nil
 		}
-		s, _ := ReadStatus(path)
+		s, err := ReadStatus(path)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
 		s.Version = 1
 		s.DurationSeconds = elapsed.Seconds()
 		if operationErr != nil {
 			s.Failures++
-			writeStatus(path, s)
-			return
+			return writeStatus(path, s)
 		}
 		s.Successes++
 		s.LastSnapshot = m.Snapshot.Unix()
 		s.LastSuccess = m.Uploaded.Unix()
 		s.ArchiveBytes = m.Size
-		writeStatus(path, s)
+		return writeStatus(path, s)
 	}
 }
 
-func writeStatus(path string, s Status) {
+func writeStatus(path string, s Status) error {
 	b, err := json.Marshal(s)
 	if err != nil {
-		return
+		return err
 	}
 	dir := filepath.Dir(path)
-	if os.MkdirAll(dir, 0700) != nil {
-		return
+	if err := os.MkdirAll(dir, 0750); err != nil {
+		return err
 	}
 	f, err := os.CreateTemp(dir, ".backup-status-")
 	if err != nil {
-		return
+		return err
 	}
 	name := f.Name()
 	defer os.Remove(name)
-	if f.Chmod(0600) != nil {
+	if err = f.Chmod(0640); err != nil {
 		f.Close()
-		return
+		return err
 	}
 	if _, err = f.Write(b); err != nil {
 		f.Close()
-		return
+		return err
 	}
-	if f.Sync() != nil {
+	if err = f.Sync(); err != nil {
 		f.Close()
-		return
+		return err
 	}
-	if f.Close() != nil {
-		return
+	if err = f.Close(); err != nil {
+		return err
 	}
-	_ = os.Rename(name, path)
+	return os.Rename(name, path)
 }

@@ -111,9 +111,13 @@ shared status volume. The coordinator mounts that volume read-only at
 `/var/lib/forgeq-backup` and reads `/var/lib/forgeq-backup/status.json` when
 scraped. The file contains only timestamps, byte count, duration, and success or
 failure totals; it contains no object names, tenant data, secrets, or raw errors.
-Create the volume with write access for the backup process and read access for the
-coordinator. If it is absent, malformed, or unreadable, the coordinator publishes
+Provision the shared directory with write access for the backup process and read
+and traverse access for the coordinator. Status files are written with mode 0640;
+run both processes under the same user or arrange a shared group (including group
+inheritance on the directory). Existing directory ownership and permissions are
+not changed automatically. If it is absent, malformed, or unreadable, the coordinator publishes
 `forgequeue_backup_status_available=0` so monitoring alerts rather than treating
 missing state as healthy. `Runner.Observe` updates the file atomically after each
 attempt. A failure increments the failure count and preserves the last successful
-timestamps.
+timestamps. If status publication fails, the backup command exits with an error;
+the encrypted backup may still have completed, so inspect storage before retrying.

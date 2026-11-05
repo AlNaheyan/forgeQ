@@ -12,8 +12,12 @@ func TestStatusObserverKeepsLastGoodSnapshotAndCountsFailures(t *testing.T) {
 	observe := StatusObserver(path)
 	snapshot := time.Unix(100, 0).UTC()
 	uploaded := time.Unix(200, 0).UTC()
-	observe(Manifest{Snapshot: snapshot, Uploaded: uploaded, Size: 123}, time.Second, nil)
-	observe(Manifest{}, 2*time.Second, os.ErrInvalid)
+	if err := observe(Manifest{Snapshot: snapshot, Uploaded: uploaded, Size: 123}, time.Second, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := observe(Manifest{}, 2*time.Second, os.ErrInvalid); err != nil {
+		t.Fatal(err)
+	}
 	s, err := ReadStatus(path)
 	if err != nil {
 		t.Fatal(err)
@@ -25,7 +29,7 @@ func TestStatusObserverKeepsLastGoodSnapshotAndCountsFailures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0600 {
+	if info.Mode().Perm() != 0640 {
 		t.Fatalf("status permissions=%o", info.Mode().Perm())
 	}
 }
@@ -39,5 +43,23 @@ func TestReadStatusRejectsMalformedAndOversizedFiles(t *testing.T) {
 		if _, err := ReadStatus(path); err == nil {
 			t.Fatalf("accepted %d-byte invalid status", len(content))
 		}
+	}
+}
+
+func TestStatusObserverReportsPublicationErrors(t *testing.T) {
+	dir := t.TempDir()
+	blocker := filepath.Join(dir, "blocker")
+	if err := os.WriteFile(blocker, []byte("x"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := StatusObserver(filepath.Join(blocker, "status"))(Manifest{}, time.Second, nil); err == nil {
+		t.Fatal("expected publication failure")
+	}
+	bad := filepath.Join(dir, "invalid.json")
+	if err := os.WriteFile(bad, []byte("invalid"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := StatusObserver(bad)(Manifest{}, time.Second, nil); err == nil {
+		t.Fatal("expected invalid status failure")
 	}
 }
