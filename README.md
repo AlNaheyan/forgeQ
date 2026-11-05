@@ -40,13 +40,21 @@ docker compose up -d --build api coordinator worker
 ```
 
 Open [localhost:8080/dashboard](http://localhost:8080/dashboard), connect with
-your API key, and launch a job. Local development uses HTTP; public deployment
-requires HTTPS termination.
+your API key, and launch a job. To run application-owned work, follow the
+[invoice application example](examples/invoice-app/README.md): configure its
+job type on the API, start its Go worker, and submit a job using the public
+[client](client) and [worker](worker) packages. The example is a separate Go
+module and creates an invoice record in its application database.
+
+Workers execute trusted application code. Jobs are delivered at least once, so
+handlers that produce external effects must use idempotency. Local development
+uses HTTP and a shared service token; production requires HTTPS and verified mTLS.
 
 Run tests or stop the stack:
 
 ```bash
 go test ./...
+(cd examples/invoice-app && go test ./...)
 make test-recovery       # Integration tests using disposable PostgreSQL/Redis
 docker compose down     # Stops the stack without deleting its data volumes
 ```
